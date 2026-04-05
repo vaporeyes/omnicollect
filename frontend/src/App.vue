@@ -239,17 +239,21 @@ function onSettingsClose() {
     <aside class="sidebar">
       <h2>OmniCollect</h2>
       <button class="builder-btn" @click="openNewSchemaBuilder">+ New Schema</button>
-      <button class="export-btn" :disabled="exporting" @click="onExportBackup">
-        {{ exporting ? 'Exporting...' : 'Export Backup' }}
-      </button>
-      <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
-      <div v-if="exportMessage" class="export-message">{{ exportMessage }}</div>
-      <ModuleSelector
-        :modules="moduleStore.modules"
-        @select="onModuleSelect"
-        @edit="openEditSchemaBuilder"
-        @createSchema="openNewSchemaBuilder"
-      />
+      <div class="sidebar-scroll">
+        <ModuleSelector
+          :modules="moduleStore.modules"
+          @select="onModuleSelect"
+          @edit="openEditSchemaBuilder"
+          @createSchema="openNewSchemaBuilder"
+        />
+      </div>
+      <div class="sidebar-bottom">
+        <div v-if="exportMessage" class="export-message">{{ exportMessage }}</div>
+        <button class="export-btn" :disabled="exporting" @click="onExportBackup">
+          {{ exporting ? 'Exporting...' : 'Export Backup' }}
+        </button>
+        <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
+      </div>
     </aside>
 
     <main class="main-content">
@@ -262,41 +266,49 @@ function onSettingsClose() {
       </div>
 
       <!-- Settings Page -->
-      <SettingsPage
-        v-if="showSettings"
-        :initialConfig="themeConfig"
-        :systemDark="systemDark"
-        @saved="onSettingsSaved"
-        @close="onSettingsClose"
-      />
+      <Transition name="fade-slide" mode="out-in">
+        <SettingsPage
+          v-if="showSettings"
+          :initialConfig="themeConfig"
+          :systemDark="systemDark"
+          @saved="onSettingsSaved"
+          @close="onSettingsClose"
+        />
+      </Transition>
 
       <!-- Schema Builder -->
-      <SchemaBuilder
-        v-if="showBuilder && !showSettings"
-        :moduleId="builderModuleId"
-        :initialJSON="builderInitialJSON"
-        @saved="onBuilderSaved"
-        @close="onBuilderClose"
-      />
+      <Transition name="fade-slide" mode="out-in">
+        <SchemaBuilder
+          v-if="showBuilder && !showSettings"
+          :moduleId="builderModuleId"
+          :initialJSON="builderInitialJSON"
+          @saved="onBuilderSaved"
+          @close="onBuilderClose"
+        />
+      </Transition>
 
       <!-- Dynamic Form (create/edit item) -->
-      <DynamicForm
-        v-if="showForm && selectedSchema && !showBuilder && !showSettings"
-        :schema="selectedSchema"
-        :item="editingItem"
-        @save="onSave"
-        @cancel="onCancel"
-      />
+      <Transition name="fade-slide" mode="out-in">
+        <DynamicForm
+          v-if="showForm && selectedSchema && !showBuilder && !showSettings"
+          :schema="selectedSchema"
+          :item="editingItem"
+          @save="onSave"
+          @cancel="onCancel"
+        />
+      </Transition>
 
       <!-- Item Detail View -->
-      <ItemDetail
-        v-if="showDetail && viewingItem && !showForm && !showBuilder && !showSettings"
-        :item="viewingItem"
-        :schema="viewingSchema"
-        @edit="onEditFromDetail"
-        @close="onCloseDetail"
-        @viewImage="onDetailViewImage"
-      />
+      <Transition name="fade-slide" mode="out-in">
+        <ItemDetail
+          v-if="showDetail && viewingItem && !showForm && !showBuilder && !showSettings"
+          :item="viewingItem"
+          :schema="viewingSchema"
+          @edit="onEditFromDetail"
+          @close="onCloseDetail"
+          @viewImage="onDetailViewImage"
+        />
+      </Transition>
 
       <!-- Collection views -->
       <template v-if="!showForm && !showDetail && !showBuilder && !showSettings">
@@ -313,25 +325,29 @@ function onSettingsClose() {
           >Grid</button>
         </div>
 
-        <ItemList
-          v-if="viewMode === 'list'"
-          :items="collectionStore.items"
-          :modules="moduleStore.modules"
-          :activeModuleId="collectionStore.activeModuleId"
-          @select="onItemSelect"
-          @filterChange="onFilterChange"
-          @search="onSearch"
-          @addItem="onAddFirstItem"
-        />
+        <Transition name="fade-slide" mode="out-in">
+          <ItemList
+            v-if="viewMode === 'list'"
+            key="list"
+            :items="collectionStore.items"
+            :modules="moduleStore.modules"
+            :activeModuleId="collectionStore.activeModuleId"
+            @select="onItemSelect"
+            @filterChange="onFilterChange"
+            @search="onSearch"
+            @addItem="onAddFirstItem"
+          />
 
-        <CollectionGrid
-          v-if="viewMode === 'grid'"
-          :items="collectionStore.items"
-          :modules="moduleStore.modules"
-          @select="onItemSelect"
-          @viewImage="onViewImage"
-          @addItem="onAddFirstItem"
-        />
+          <CollectionGrid
+            v-else-if="viewMode === 'grid'"
+            key="grid"
+            :items="collectionStore.items"
+            :modules="moduleStore.modules"
+            @select="onItemSelect"
+            @viewImage="onViewImage"
+            @addItem="onAddFirstItem"
+          />
+        </Transition>
       </template>
 
       <ImageLightbox
@@ -360,19 +376,35 @@ body {
 }
 .sidebar {
   width: 250px;
-  padding: 20px 16px;
-  border-right: 1px solid var(--border-primary);
-  background: var(--bg-secondary);
-  overflow-y: auto;
+  padding: 20px 16px 12px;
+  background: var(--bg-tertiary);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex-shrink: 0;
 }
 .sidebar h2 {
-  margin: 0 0 16px 0;
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  margin: 0 0 12px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+}
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-primary);
+  margin-top: 8px;
 }
 .builder-btn {
   width: 100%;
@@ -380,7 +412,7 @@ body {
   margin-bottom: 4px;
   border: 1px dashed var(--accent-blue);
   border-radius: var(--radius-md);
-  background: var(--bg-primary);
+  background: transparent;
   color: var(--accent-blue);
   cursor: pointer;
   font-size: 13px;
@@ -393,18 +425,17 @@ body {
 }
 .export-btn {
   width: 100%;
-  padding: 9px 12px;
-  margin-bottom: 4px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .export-btn:hover {
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 .export-btn:disabled {
@@ -413,24 +444,23 @@ body {
 }
 .settings-btn {
   width: 100%;
-  padding: 9px 12px;
-  margin-bottom: 4px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .settings-btn:hover {
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 .export-message {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--success-text);
-  padding: 6px 0;
+  padding: 4px 0;
   text-align: center;
 }
 .main-content {
@@ -438,6 +468,10 @@ body {
   padding: 24px;
   overflow-y: auto;
   background: var(--bg-primary);
+  border-top-left-radius: var(--radius-lg);
+  box-shadow: -2px 0 16px hsla(220, 10%, 20%, 0.06);
+  position: relative;
+  z-index: 1;
 }
 .loading {
   color: var(--text-muted);
@@ -481,5 +515,21 @@ body {
   background: var(--accent-blue);
   color: var(--text-on-accent);
   box-shadow: var(--shadow-sm);
+}
+
+/* fade-slide: content panels slide up slightly and fade in */
+.fade-slide-enter-active {
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+.fade-slide-leave-active {
+  transition: opacity 0.12s ease-in, transform 0.12s ease-in;
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 </style>

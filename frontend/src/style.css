@@ -2,18 +2,30 @@
    Poline generates and applies actual values at runtime via theme.ts.
    These fallbacks ensure the app renders before JS initializes. */
 :root {
+  /* Fluid spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  /* Backgrounds -- secondary/tertiary are semi-transparent for glass */
   --bg-primary: #fafaf8;
-  --bg-secondary: #f4f3f0;
-  --bg-tertiary: #eae8e4;
+  --bg-secondary: hsla(40, 10%, 95%, 0.65);
+  --bg-tertiary: hsla(40, 12%, 91%, 0.55);
   --bg-hover: hsla(200, 40%, 45%, 0.06);
   --bg-input: #fdfdfb;
+
+  /* Glass blur intensity applied via backdrop-filter */
+  --glass-blur: 12px;
 
   --text-primary: hsl(220, 15%, 18%);
   --text-secondary: hsl(220, 10%, 40%);
   --text-muted: hsl(220, 8%, 58%);
   --text-on-accent: hsl(220, 5%, 99%);
 
-  --border-primary: hsl(220, 12%, 84%);
+  /* Borders -- near-invisible, just enough for structure */
+  --border-primary: hsla(220, 10%, 70%, 0.25);
   --border-input: hsl(220, 10%, 78%);
 
   --accent-blue: hsl(200, 55%, 45%);
@@ -33,11 +45,20 @@
   --shadow-sm: 0 1px 3px hsla(220, 10%, 20%, 0.08), 0 1px 2px hsla(220, 10%, 20%, 0.06);
   --shadow-md: 0 4px 12px hsla(220, 10%, 20%, 0.12), 0 2px 4px hsla(220, 10%, 20%, 0.08);
 
+  /* Softer corners */
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
+
+  /* Typography -- tracking for uppercase, tight line-height for data */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-dense: 1.15;
 }
 
 /* Global reset and typography */
@@ -97,4 +118,24 @@ input:disabled, select:disabled, textarea:disabled {
 ::selection {
   background: var(--accent-blue-light);
   color: var(--text-primary);
+}
+
+/* Glass surface -- apply to any element using bg-secondary/tertiary */
+.glass {
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+/* Typography helpers */
+.text-uppercase {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+}
+
+.leading-dense {
+  line-height: var(--leading-dense);
+}
+
+.leading-tight {
+  line-height: var(--leading-tight);
 }

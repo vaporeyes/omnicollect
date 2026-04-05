@@ -31,7 +31,7 @@ const emit = defineEmits<{
         @click="emit('select', mod)"
       >
         <span class="module-name-row">
-          <strong>{{ mod.displayName }}</strong>
+          <span class="module-name">{{ mod.displayName }}</span>
           <button class="edit-btn" @click.stop="emit('edit', mod)" title="Edit schema">&#9998;</button>
         </span>
         <span v-if="mod.description" class="module-desc">{{ mod.description }}</span>
@@ -42,8 +42,12 @@ const emit = defineEmits<{
 
 <style scoped>
 .module-selector h3 {
-  margin: 0 0 8px 0;
-  font-size: 16px;
+  margin: 0 0 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
 }
 .module-list {
   list-style: none;
@@ -51,12 +55,21 @@ const emit = defineEmits<{
   margin: 0;
 }
 .module-item {
-  padding: 8px 12px;
+  padding: 7px 12px;
   cursor: pointer;
-  border-radius: 4px;
-  margin-bottom: 4px;
+  border-radius: 0;
+  margin-bottom: 1px;
+  border-left: 2px solid transparent;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .module-item:hover {
+  background: var(--bg-hover);
+}
+.module-item:hover .edit-btn {
+  opacity: 1;
+}
+.module-item.active {
+  border-left-color: var(--accent-blue);
   background: var(--bg-hover);
 }
 .module-name-row {
@@ -64,23 +77,30 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
 }
-.module-item strong {
-  font-size: 14px;
+.module-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
 }
 .edit-btn {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-muted);
   padding: 0 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
 }
 .edit-btn:hover {
   color: var(--accent-blue);
 }
 .module-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: var(--leading-dense);
+  margin-top: 1px;
 }
 .empty-state {
   display: flex;
@@ -101,7 +121,7 @@ const emit = defineEmits<{
 .cta-btn {
   padding: 8px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--accent-blue);
   color: var(--text-on-accent);
   cursor: pointer;

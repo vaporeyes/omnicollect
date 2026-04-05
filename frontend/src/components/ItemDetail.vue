@@ -185,6 +185,8 @@ function nextImage() {
 .gallery-main {
   position: relative;
   background: var(--bg-secondary);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 4/3;
@@ -259,6 +261,8 @@ function nextImage() {
   padding: 32px;
   color: var(--text-muted);
   background: var(--bg-secondary);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   border-radius: 8px;
   margin-bottom: 20px;
 }

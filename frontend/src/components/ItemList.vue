@@ -204,10 +204,10 @@ function sortIndicator(key: string): string {
   margin-bottom: 12px;
 }
 .filter-select, .search-input {
-  padding: 6px 8px;
+  padding: 6px 10px;
   border: 1px solid var(--border-input);
-  border-radius: 4px;
-  font-size: 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
 }
 .search-input {
   flex: 1;
@@ -219,26 +219,36 @@ function sortIndicator(key: string): string {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-dense);
 }
 .data-table th {
   text-align: left;
-  padding: 8px 10px;
-  border-bottom: 2px solid var(--border-primary);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 11px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
   white-space: nowrap;
   background: var(--bg-secondary);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
   position: sticky;
   top: 0;
+  z-index: 1;
 }
 .data-table th.sortable {
   cursor: pointer;
   user-select: none;
+  transition: color var(--transition-fast);
 }
 .data-table th.sortable:hover {
-  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .data-table td {
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-bottom: 1px solid var(--border-primary);
   max-width: 200px;
   overflow: hidden;
@@ -247,6 +257,7 @@ function sortIndicator(key: string): string {
 }
 .data-row {
   cursor: pointer;
+  transition: background var(--transition-fast);
 }
 .data-row:hover {
   background: var(--bg-hover);
@@ -256,7 +267,6 @@ function sortIndicator(key: string): string {
 }
 .col-price {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 .col-date {
   color: var(--text-secondary);
@@ -285,7 +295,7 @@ function sortIndicator(key: string): string {
 .cta-btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--accent-blue);
   color: var(--text-on-accent);
   cursor: pointer;

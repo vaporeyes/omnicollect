@@ -73,11 +73,13 @@ function onImageError(event: Event) {
               <path d="M21 15l-5-5L5 21"/>
             </svg>
           </div>
-        </div>
-        <div class="card-title">{{ item.title }}</div>
-        <div class="card-meta">
-          <span class="card-module">{{ moduleName(item.moduleId) }}</span>
-          <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+          <div class="card-caption">
+            <span class="card-title">{{ item.title }}</span>
+            <span class="card-meta">
+              <span class="card-module">{{ moduleName(item.moduleId) }}</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -91,16 +93,19 @@ function onImageError(event: Event) {
   gap: 16px;
 }
 .grid-card {
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: box-shadow 0.15s;
-}
-.grid-card:hover {
+  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
   box-shadow: var(--shadow-sm);
 }
+.grid-card:hover {
+  transform: scale(1.02);
+  box-shadow: var(--shadow-md);
+}
 .card-image {
+  position: relative;
   aspect-ratio: 1;
   background: var(--bg-secondary);
   overflow: hidden;
@@ -109,6 +114,7 @@ function onImageError(event: Event) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 .placeholder {
   width: 100%;
@@ -118,20 +124,34 @@ function onImageError(event: Event) {
   justify-content: center;
   background: var(--bg-tertiary);
 }
+.card-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 10px;
+  background: hsla(0, 0%, 10%, 0.45);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .card-title {
-  padding: 8px 10px 2px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: var(--leading-tight);
 }
 .card-meta {
   display: flex;
   justify-content: space-between;
-  padding: 0 10px 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-size: 11px;
+  color: hsla(0, 0%, 100%, 0.7);
+  line-height: var(--leading-dense);
 }
 .empty-state {
   display: flex;
@@ -156,7 +176,7 @@ function onImageError(event: Event) {
 .cta-btn {
   padding: 10px 20px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--accent-blue);
   color: var(--text-on-accent);
   cursor: pointer;
