@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import {computed} from 'vue'
+import draggable from 'vuedraggable'
 
 interface DraftAttribute {
   name: string
@@ -66,13 +67,10 @@ function removeField(index: number) {
   emit('update:schema', {...props.schema, attributes: attrs})
 }
 
-function moveField(index: number, direction: -1 | 1) {
-  const newIndex = index + direction
-  if (newIndex < 0 || newIndex >= props.schema.attributes.length) return
+function onDragEnd(event: any) {
   const attrs = [...props.schema.attributes]
-  const temp = attrs[index]
-  attrs[index] = attrs[newIndex]
-  attrs[newIndex] = temp
+  const [moved] = attrs.splice(event.oldIndex, 1)
+  attrs.splice(event.newIndex, 0, moved)
   emit('update:schema', {...props.schema, attributes: attrs})
 }
 
@@ -146,8 +144,17 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
     <div class="fields-section">
       <h4>Fields</h4>
 
-      <div v-for="(attr, idx) in schema.attributes" :key="idx" class="field-row">
+      <draggable
+        :list="schema.attributes"
+        item-key="name"
+        handle=".drag-handle"
+        ghost-class="drag-ghost"
+        @end="onDragEnd"
+      >
+        <template #item="{element: attr, index: idx}">
+        <div class="field-row">
         <div class="field-main">
+          <span class="drag-handle" title="Drag to reorder">&#9776;</span>
           <input
             type="text"
             :value="attr.name"
@@ -170,8 +177,6 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
             />
             Req
           </label>
-          <button class="icon-btn" @click="moveField(idx, -1)" :disabled="idx === 0" title="Move up">^</button>
-          <button class="icon-btn" @click="moveField(idx, 1)" :disabled="idx === schema.attributes.length - 1" title="Move down">v</button>
           <button class="icon-btn remove-btn" @click="removeField(idx)" title="Remove">x</button>
         </div>
 
@@ -221,6 +226,8 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
           </div>
         </details>
       </div>
+        </template>
+      </draggable>
 
       <button class="add-field-btn" @click="addField">+ Add Field</button>
     </div>
@@ -292,6 +299,21 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
   align-items: center;
   gap: 2px;
   white-space: nowrap;
+}
+.drag-handle {
+  cursor: grab;
+  color: #999;
+  font-size: 16px;
+  padding: 0 2px;
+  user-select: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-ghost {
+  opacity: 0.4;
+  background: #ebf8ff;
+  border-color: #3182ce;
 }
 .icon-btn {
   width: 24px;
