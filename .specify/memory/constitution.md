@@ -1,50 +1,135 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+  Sync Impact Report
+  ====================
+  Version change: N/A (template) -> 1.0.0
+  Modified principles: None (initial ratification)
+  Added sections:
+    - Principle I: Local-First Mandate
+    - Principle II: Schema-Driven UI
+    - Principle III: Flat Data Architecture
+    - Principle IV: Performance & Memory Protection
+    - Principle V: Type-Safe IPC
+    - Principle VI: Documentation is Paramount
+    - Technology Stack (Section 2)
+    - Compliance Review (Section 3)
+    - Governance
+  Removed sections: None
+  Templates requiring updates:
+    - .specify/templates/plan-template.md: ✅ No updates needed
+      (Constitution Check section is dynamically filled)
+    - .specify/templates/spec-template.md: ✅ No updates needed
+      (Requirements section is generic)
+    - .specify/templates/tasks-template.md: ✅ No updates needed
+      (Task phases are generic)
+  Follow-up TODOs: None
+-->
+
+# OmniCollect Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Local-First Mandate
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+The primary source of truth is the local SQLite database. The application
+MUST provide 100% functionality without an active internet connection.
+No centralized cloud accounts are required for core operation.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+- All data MUST be readable and writable offline.
+- Network features (sync, backup, sharing) are supplementary and MUST
+  degrade gracefully when connectivity is unavailable.
+- No feature may depend on a remote service for its primary function.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Schema-Driven UI
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+UI forms for collection items MUST be generated at runtime from JSON
+schemas. There MUST NOT be hardcoded Vue templates for specific item
+types.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+- Files such as `BookForm.vue`, `CoinForm.vue`, or any type-specific
+  form component are explicitly forbidden.
+- A single, generic form renderer MUST consume JSON schema definitions
+  to produce the appropriate input fields, validation, and layout.
+- Adding a new collection type MUST require only a new JSON schema
+  definition, not new UI code.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Flat Data Architecture
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+All item metadata MUST be stored as flat JSON documents within a single
+SQLite table using an Entity-Attribute-Value (EAV) pattern.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Complex SQL JOIN operations for item attributes are prohibited.
+- Queries against item metadata MUST operate on the flat JSON structure.
+- Schema evolution (adding new fields to a collection type) MUST NOT
+  require database migrations.
+
+### IV. Performance & Memory Protection
+
+The frontend MUST NOT load original, high-resolution media files into
+list or grid views. All list renders MUST use generated, highly
+compressed local thumbnails.
+
+- Thumbnail generation MUST occur at import time or on first access.
+- Original media files are loaded only in detail/edit views on explicit
+  user action.
+- The frontend MUST NOT hold references to full-resolution image data
+  in list/grid rendering paths.
+
+### V. Type-Safe IPC
+
+All communication between the Vue 3 frontend and Go backend MUST use
+Wails-generated TypeScript bindings. Raw, untyped IPC calls are
+prohibited.
+
+- Every backend function exposed to the frontend MUST have a
+  corresponding generated TypeScript binding.
+- Direct `window.go` or equivalent untyped calls are forbidden.
+- Type mismatches between frontend and backend MUST be caught at
+  compile time, not runtime.
+
+### VI. Documentation is Paramount
+
+All features, APIs, and architectural decisions MUST be documented.
+
+- Public functions and exported types MUST have meaningful
+  documentation.
+- Architectural decisions MUST be recorded with rationale.
+- User-facing features MUST include usage documentation before a
+  feature is considered complete.
+
+## Technology Stack
+
+- **Frontend**: Vue 3 (Composition API, TypeScript)
+- **Backend**: Go
+- **Desktop Framework**: Wails (provides native desktop shell and
+  type-safe IPC bindings)
+- **Database**: SQLite (local, embedded)
+- **Schema Format**: JSON Schema (drives UI generation per Principle II)
+
+## Compliance Review
+
+Any PR or feature addition that violates these principles MUST be
+refactored before merge.
+
+- Code reviews MUST include a constitution compliance check against
+  all six principles.
+- Automated checks SHOULD enforce Principles IV (no raw media in
+  lists) and V (no untyped IPC) where feasible.
+- Violations discovered post-merge MUST be tracked as high-priority
+  issues and resolved in the next development cycle.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices for the
+OmniCollect project. Amendments follow this procedure:
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+1. Propose the change with rationale in a dedicated PR.
+2. Document the specific principle(s) affected and the motivation.
+3. Update this file, increment the version per semver rules:
+   - **MAJOR**: Principle removal or incompatible redefinition.
+   - **MINOR**: New principle added or existing principle materially
+     expanded.
+   - **PATCH**: Clarifications, wording, or non-semantic refinements.
+4. Update any dependent templates or documentation as identified in
+   the Sync Impact Report.
+
+**Version**: 1.0.0 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-04

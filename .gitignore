@@ -1,0 +1,24 @@
+# Wails build output
+build/bin
+
+# Node.js
+node_modules
+
+# Wails frontend build
+frontend/dist
+
+# Go
+*.exe
+*.test
+*.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env*
