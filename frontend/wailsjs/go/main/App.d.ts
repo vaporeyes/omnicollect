@@ -6,7 +6,11 @@ export function GetActiveModules():Promise<Array<main.ModuleSchema>>;
 
 export function GetItems(arg1:string,arg2:string):Promise<Array<main.Item>>;
 
+export function LoadModuleFile(arg1:string):Promise<string>;
+
 export function ProcessImage(arg1:string):Promise<main.ProcessImageResult>;
+
+export function SaveCustomModule(arg1:string):Promise<main.ModuleSchema>;
 
 export function SaveItem(arg1:main.Item):Promise<main.Item>;
 

@@ -7,6 +7,7 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [module: main.ModuleSchema]
+  edit: [module: main.ModuleSchema]
 }>()
 </script>
 
@@ -24,7 +25,10 @@ const emit = defineEmits<{
         class="module-item"
         @click="emit('select', mod)"
       >
-        <strong>{{ mod.displayName }}</strong>
+        <span class="module-name-row">
+          <strong>{{ mod.displayName }}</strong>
+          <button class="edit-btn" @click.stop="emit('edit', mod)" title="Edit schema">&#9998;</button>
+        </span>
         <span v-if="mod.description" class="module-desc">{{ mod.description }}</span>
       </li>
     </ul>
@@ -50,9 +54,24 @@ const emit = defineEmits<{
 .module-item:hover {
   background: rgba(0,0,0,0.05);
 }
+.module-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .module-item strong {
-  display: block;
   font-size: 14px;
+}
+.edit-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #888;
+  padding: 0 2px;
+}
+.edit-btn:hover {
+  color: #3182ce;
 }
 .module-desc {
   font-size: 12px;

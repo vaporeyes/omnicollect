@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {ref, onMounted} from 'vue'
 import {main} from '../wailsjs/go/models'
+import {LoadModuleFile} from '../wailsjs/go/main/App'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
 import ModuleSelector from './components/ModuleSelector.vue'
@@ -8,6 +9,7 @@ import DynamicForm from './components/DynamicForm.vue'
 import ItemList from './components/ItemList.vue'
 import CollectionGrid from './components/CollectionGrid.vue'
 import ImageLightbox from './components/ImageLightbox.vue'
+import SchemaBuilder from './components/SchemaBuilder.vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
@@ -21,6 +23,11 @@ const viewMode = ref<'list' | 'grid'>('grid')
 const lightboxFilename = ref('')
 const lightboxVisible = ref(false)
 
+// Schema builder state
+const showBuilder = ref(false)
+const builderModuleId = ref<string | null>(null)
+const builderInitialJSON = ref<string | null>(null)
+
 onMounted(async () => {
   await Promise.all([
     moduleStore.fetchModules(),
@@ -32,6 +39,7 @@ function onModuleSelect(mod: main.ModuleSchema) {
   selectedSchema.value = mod
   editingItem.value = null
   showForm.value = true
+  showBuilder.value = false
 }
 
 function onItemSelect(item: main.Item) {
@@ -43,6 +51,7 @@ function onItemSelect(item: main.Item) {
   selectedSchema.value = schema
   editingItem.value = item
   showForm.value = true
+  showBuilder.value = false
 }
 
 function onViewImage(_item: main.Item, filename: string) {
@@ -72,15 +81,46 @@ function onFilterChange(moduleId: string) {
 function onSearch(query: string) {
   collectionStore.setSearch(query)
 }
+
+// Schema builder handlers
+function openNewSchemaBuilder() {
+  builderModuleId.value = null
+  builderInitialJSON.value = null
+  showBuilder.value = true
+  showForm.value = false
+}
+
+async function openEditSchemaBuilder(mod: main.ModuleSchema) {
+  try {
+    const json = await LoadModuleFile(mod.id)
+    builderModuleId.value = mod.id
+    builderInitialJSON.value = json
+    showBuilder.value = true
+    showForm.value = false
+  } catch (e: any) {
+    alert(`Failed to load schema: ${e?.message ?? e}`)
+  }
+}
+
+async function onBuilderSaved() {
+  showBuilder.value = false
+  await moduleStore.fetchModules()
+}
+
+function onBuilderClose() {
+  showBuilder.value = false
+}
 </script>
 
 <template>
   <div class="app-layout">
     <aside class="sidebar">
       <h2>OmniCollect</h2>
+      <button class="builder-btn" @click="openNewSchemaBuilder">+ New Schema</button>
       <ModuleSelector
         :modules="moduleStore.modules"
         @select="onModuleSelect"
+        @edit="openEditSchemaBuilder"
       />
     </aside>
 
@@ -93,15 +133,26 @@ function onSearch(query: string) {
         {{ collectionStore.error }}
       </div>
 
+      <!-- Schema Builder -->
+      <SchemaBuilder
+        v-if="showBuilder"
+        :moduleId="builderModuleId"
+        :initialJSON="builderInitialJSON"
+        @saved="onBuilderSaved"
+        @close="onBuilderClose"
+      />
+
+      <!-- Dynamic Form (create/edit item) -->
       <DynamicForm
-        v-if="showForm && selectedSchema"
+        v-if="showForm && selectedSchema && !showBuilder"
         :schema="selectedSchema"
         :item="editingItem"
         @save="onSave"
         @cancel="onCancel"
       />
 
-      <template v-if="!showForm">
+      <!-- Collection views -->
+      <template v-if="!showForm && !showBuilder">
         <div class="view-controls">
           <button
             class="view-toggle"
@@ -160,8 +211,22 @@ body {
   overflow-y: auto;
 }
 .sidebar h2 {
-  margin: 0 0 16px 0;
+  margin: 0 0 12px 0;
   font-size: 18px;
+}
+.builder-btn {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px dashed #3182ce;
+  border-radius: 4px;
+  background: white;
+  color: #3182ce;
+  cursor: pointer;
+  font-size: 13px;
+}
+.builder-btn:hover {
+  background: #ebf8ff;
 }
 .main-content {
   flex: 1;

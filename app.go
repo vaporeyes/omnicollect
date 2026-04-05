@@ -5,8 +5,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -84,6 +86,57 @@ func (a *App) ProcessImage(sourcePath string) (ProcessImageResult, error) {
 		return ProcessImageResult{}, fmt.Errorf("source path is required")
 	}
 	return processImage(sourcePath)
+}
+
+// SaveCustomModule validates and writes a module schema JSON file to disk.
+// After saving, reloads the in-memory module list so the schema is
+// immediately available via GetActiveModules.
+func (a *App) SaveCustomModule(schemaJSON string) (ModuleSchema, error) {
+	var schema ModuleSchema
+	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
+		return ModuleSchema{}, fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	if err := validateModuleSchema(&schema); err != nil {
+		return ModuleSchema{}, err
+	}
+
+	if err := saveModuleFile(&schema); err != nil {
+		return ModuleSchema{}, err
+	}
+
+	// Reload all module schemas
+	modules, err := loadModuleSchemas()
+	if err != nil {
+		log.Printf("warning: failed to reload modules after save: %v", err)
+	} else {
+		a.modules = modules
+	}
+
+	return schema, nil
+}
+
+// LoadModuleFile reads a module schema file from disk and returns its
+// raw JSON content for editing in the schema builder.
+func (a *App) LoadModuleFile(moduleID string) (string, error) {
+	if moduleID == "" {
+		return "", fmt.Errorf("module ID is required")
+	}
+
+	path, err := findModuleFile(moduleID)
+	if err != nil {
+		return "", fmt.Errorf("finding module file: %w", err)
+	}
+	if path == "" {
+		return "", fmt.Errorf("module not found: %s", moduleID)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("reading module file: %w", err)
+	}
+
+	return string(data), nil
 }
 
 // SelectImageFile opens a native file dialog for selecting an image.

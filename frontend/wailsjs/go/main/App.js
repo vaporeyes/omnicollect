@@ -10,8 +10,16 @@ export function GetItems(arg1, arg2) {
   return window['go']['main']['App']['GetItems'](arg1, arg2);
 }
 
+export function LoadModuleFile(arg1) {
+  return window['go']['main']['App']['LoadModuleFile'](arg1);
+}
+
 export function ProcessImage(arg1) {
   return window['go']['main']['App']['ProcessImage'](arg1);
+}
+
+export function SaveCustomModule(arg1) {
+  return window['go']['main']['App']['SaveCustomModule'](arg1);
 }
 
 export function SaveItem(arg1) {

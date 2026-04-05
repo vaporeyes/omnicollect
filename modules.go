@@ -88,6 +88,70 @@ func parseModuleSchema(path string) (*ModuleSchema, error) {
 	return &schema, nil
 }
 
+// findModuleFile returns the file path for a given module ID by scanning
+// the modules directory. Returns empty string if not found.
+func findModuleFile(moduleID string) (string, error) {
+	dir, err := modulesDir()
+	if err != nil {
+		return "", err
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		schema, err := parseModuleSchema(path)
+		if err != nil {
+			continue
+		}
+		if schema.ID == moduleID {
+			return path, nil
+		}
+	}
+	return "", nil
+}
+
+// saveModuleFile writes a ModuleSchema as formatted JSON to the modules directory.
+func saveModuleFile(schema *ModuleSchema) error {
+	dir, err := modulesDir()
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("creating modules dir: %w", err)
+	}
+
+	// Check for ID conflict (same ID in a different file)
+	existingPath, err := findModuleFile(schema.ID)
+	if err != nil {
+		return err
+	}
+
+	targetPath := filepath.Join(dir, schema.ID+".json")
+	if existingPath != "" && existingPath != targetPath {
+		// Same ID exists in a differently-named file
+		targetPath = existingPath
+	}
+
+	data, err := json.MarshalIndent(schema, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling schema: %w", err)
+	}
+
+	if err := os.WriteFile(targetPath, data, 0644); err != nil {
+		return fmt.Errorf("writing schema file: %w", err)
+	}
+
+	return nil
+}
+
 // validateModuleSchema checks required fields and attribute uniqueness.
 func validateModuleSchema(schema *ModuleSchema) error {
 	if schema.ID == "" {
@@ -113,6 +177,10 @@ func validateModuleSchema(schema *ModuleSchema) error {
 			return fmt.Errorf("duplicate attribute name: %q", attr.Name)
 		}
 		attrNames[attr.Name] = true
+
+		if attr.Type == "enum" && len(attr.Options) == 0 {
+			return fmt.Errorf("enum attribute %q must have at least one option", attr.Name)
+		}
 	}
 
 	return nil
