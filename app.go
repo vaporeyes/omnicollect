@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -137,6 +138,34 @@ func (a *App) LoadModuleFile(moduleID string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// ExportBackup creates a ZIP archive containing the database, media,
+// and module schemas. Opens a save dialog for the user to choose the
+// output location. Returns the path to the created archive.
+func (a *App) ExportBackup() (string, error) {
+	defaultName := fmt.Sprintf("omnicollect-backup-%s.zip",
+		time.Now().UTC().Format("20060102-150405"))
+
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export Backup",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "ZIP Archives", Pattern: "*.zip"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil // user cancelled
+	}
+
+	if err := createBackupArchive(path, a.db); err != nil {
+		return "", fmt.Errorf("creating backup: %w", err)
+	}
+
+	return path, nil
 }
 
 // SelectImageFile opens a native file dialog for selecting an image.

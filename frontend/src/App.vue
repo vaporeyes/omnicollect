@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {ref, onMounted} from 'vue'
 import {main} from '../wailsjs/go/models'
-import {LoadModuleFile} from '../wailsjs/go/main/App'
+import {LoadModuleFile, ExportBackup} from '../wailsjs/go/main/App'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
 import ModuleSelector from './components/ModuleSelector.vue'
@@ -82,6 +82,26 @@ function onSearch(query: string) {
   collectionStore.setSearch(query)
 }
 
+// Export backup state
+const exporting = ref(false)
+const exportMessage = ref<string | null>(null)
+
+async function onExportBackup() {
+  exporting.value = true
+  exportMessage.value = null
+  try {
+    const path = await ExportBackup()
+    if (path) {
+      exportMessage.value = `Backup saved: ${path.split('/').pop()}`
+      setTimeout(() => { exportMessage.value = null }, 5000)
+    }
+  } catch (e: any) {
+    exportMessage.value = `Export failed: ${e?.message ?? e}`
+  } finally {
+    exporting.value = false
+  }
+}
+
 // Schema builder handlers
 function openNewSchemaBuilder() {
   builderModuleId.value = null
@@ -117,6 +137,10 @@ function onBuilderClose() {
     <aside class="sidebar">
       <h2>OmniCollect</h2>
       <button class="builder-btn" @click="openNewSchemaBuilder">+ New Schema</button>
+      <button class="export-btn" :disabled="exporting" @click="onExportBackup">
+        {{ exporting ? 'Exporting...' : 'Export Backup' }}
+      </button>
+      <div v-if="exportMessage" class="export-message">{{ exportMessage }}</div>
       <ModuleSelector
         :modules="moduleStore.modules"
         @select="onModuleSelect"
@@ -227,6 +251,30 @@ body {
 }
 .builder-btn:hover {
   background: #ebf8ff;
+}
+.export-btn {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  background: white;
+  color: #333;
+  cursor: pointer;
+  font-size: 13px;
+}
+.export-btn:hover {
+  background: #f0f0f0;
+}
+.export-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.export-message {
+  font-size: 12px;
+  color: #38a169;
+  margin-bottom: 8px;
+  padding: 4px 0;
 }
 .main-content {
   flex: 1;

@@ -16,6 +16,15 @@ function moduleName(moduleId: string): string {
   return mod?.displayName ?? moduleId
 }
 
+function formatDate(dateStr: string): string {
+  if (!dateStr) return ''
+  try {
+    return new Date(dateStr).toLocaleDateString()
+  } catch {
+    return dateStr
+  }
+}
+
 function onImageError(event: Event) {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
@@ -59,7 +68,10 @@ function onImageError(event: Event) {
           </div>
         </div>
         <div class="card-title">{{ item.title }}</div>
-        <div class="card-module">{{ moduleName(item.moduleId) }}</div>
+        <div class="card-meta">
+          <span class="card-module">{{ moduleName(item.moduleId) }}</span>
+          <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -107,7 +119,9 @@ function onImageError(event: Event) {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.card-module {
+.card-meta {
+  display: flex;
+  justify-content: space-between;
   padding: 0 10px 8px;
   font-size: 12px;
   color: #666;
