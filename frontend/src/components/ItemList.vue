@@ -12,6 +12,7 @@ const emit = defineEmits<{
   select: [item: main.Item]
   filterChange: [moduleId: string]
   search: [query: string]
+  addItem: []
 }>()
 
 const searchText = ref('')
@@ -135,7 +136,14 @@ function sortIndicator(key: string): string {
     </div>
 
     <div v-if="sortedItems.length === 0" class="empty-state">
-      No items found.
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/>
+      </svg>
+      <p>No items found</p>
+      <p class="empty-hint">Select a collection type from the sidebar to start adding items.</p>
+      <button v-if="modules.length > 0" class="cta-btn" @click="emit('addItem')">Add First Item</button>
     </div>
 
     <div v-else class="table-wrapper">
@@ -255,9 +263,35 @@ function sortIndicator(key: string): string {
   white-space: nowrap;
 }
 .empty-state {
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+.empty-state svg {
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+.empty-state p {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+}
+.empty-hint {
+  font-size: 13px !important;
+  margin-bottom: 16px !important;
+}
+.cta-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 14px;
+}
+.cta-btn:hover {
+  background: var(--accent-blue-hover);
 }
 </style>

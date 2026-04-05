@@ -9,6 +9,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [item: main.Item]
   viewImage: [item: main.Item, filename: string]
+  addItem: []
 }>()
 
 function moduleName(moduleId: string): string {
@@ -36,7 +37,13 @@ function onImageError(event: Event) {
 <template>
   <div class="collection-grid">
     <div v-if="items.length === 0" class="empty-state">
-      No items found.
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      <p>Your collection is empty</p>
+      <p class="empty-hint">Select a collection type from the sidebar to add your first item.</p>
+      <button v-if="modules.length > 0" class="cta-btn" @click="emit('addItem')">Add First Item</button>
     </div>
 
     <div v-else class="grid">
@@ -127,9 +134,35 @@ function onImageError(event: Event) {
   color: var(--text-secondary);
 }
 .empty-state {
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+.empty-state svg {
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+.empty-state p {
+  margin: 0 0 4px 0;
+  font-size: 15px;
+}
+.empty-hint {
+  font-size: 13px !important;
+  margin-bottom: 16px !important;
+}
+.cta-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 14px;
+}
+.cta-btn:hover {
+  background: var(--accent-blue-hover);
 }
 </style>

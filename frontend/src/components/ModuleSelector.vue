@@ -8,6 +8,7 @@ defineProps<{
 const emit = defineEmits<{
   select: [module: main.ModuleSchema]
   edit: [module: main.ModuleSchema]
+  createSchema: []
 }>()
 </script>
 
@@ -15,8 +16,12 @@ const emit = defineEmits<{
   <div class="module-selector">
     <h3>Collection Types</h3>
     <div v-if="modules.length === 0" class="empty-state">
-      No collection types available. Add JSON schema files to
-      ~/.omnicollect/modules/
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+        <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+      </svg>
+      <p>No collection types yet</p>
+      <button class="cta-btn" @click="emit('createSchema')">Create Your First Schema</button>
     </div>
     <ul v-else class="module-list">
       <li
@@ -78,8 +83,31 @@ const emit = defineEmits<{
   color: var(--text-secondary);
 }
 .empty-state {
-  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 12px;
   color: var(--text-muted);
-  padding: 12px;
+}
+.empty-state svg {
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+.empty-state p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+}
+.cta-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 13px;
+}
+.cta-btn:hover {
+  background: var(--accent-blue-hover);
 }
 </style>

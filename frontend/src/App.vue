@@ -92,6 +92,12 @@ function onCancel() {
   editingItem.value = null
 }
 
+function onAddFirstItem() {
+  if (moduleStore.modules.length > 0) {
+    onModuleSelect(moduleStore.modules[0])
+  }
+}
+
 function onFilterChange(moduleId: string) {
   collectionStore.setFilter(moduleId)
 }
@@ -163,6 +169,7 @@ function onBuilderClose() {
         :modules="moduleStore.modules"
         @select="onModuleSelect"
         @edit="openEditSchemaBuilder"
+        @createSchema="openNewSchemaBuilder"
       />
     </aside>
 
@@ -216,6 +223,7 @@ function onBuilderClose() {
           @select="onItemSelect"
           @filterChange="onFilterChange"
           @search="onSearch"
+          @addItem="onAddFirstItem"
         />
 
         <CollectionGrid
@@ -224,6 +232,7 @@ function onBuilderClose() {
           :modules="moduleStore.modules"
           @select="onItemSelect"
           @viewImage="onViewImage"
+          @addItem="onAddFirstItem"
         />
       </template>
 
