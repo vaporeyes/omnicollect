@@ -194,6 +194,7 @@ function onBuilderClose() {
           v-if="viewMode === 'list'"
           :items="collectionStore.items"
           :modules="moduleStore.modules"
+          :activeModuleId="collectionStore.activeModuleId"
           @select="onItemSelect"
           @filterChange="onFilterChange"
           @search="onSearch"
