@@ -241,7 +241,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 .meta-section {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-primary);
 }
 .form-field {
   margin-bottom: 8px;
@@ -252,25 +252,25 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
   margin-bottom: 2px;
   font-size: 13px;
 }
-.required { color: #e53e3e; }
+.required { color: var(--required-color); }
 .field-input {
   width: 100%;
   padding: 5px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
   font-size: 13px;
   box-sizing: border-box;
 }
 .id-field {
-  background: #f0f0f0;
-  color: #666;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }
 .fields-section h4 {
   margin: 0 0 8px 0;
   font-size: 14px;
 }
 .field-row {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
   padding: 8px;
   margin-bottom: 8px;
@@ -283,13 +283,13 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 .field-name-input {
   flex: 1;
   padding: 4px 6px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
   font-size: 13px;
 }
 .type-select {
   padding: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
   font-size: 13px;
 }
@@ -302,7 +302,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 }
 .drag-handle {
   cursor: grab;
-  color: #999;
+  color: var(--text-muted);
   font-size: 16px;
   padding: 0 2px;
   user-select: none;
@@ -312,15 +312,15 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 }
 .drag-ghost {
   opacity: 0.4;
-  background: #ebf8ff;
-  border-color: #3182ce;
+  background: var(--accent-blue-light);
+  border-color: var(--accent-blue);
 }
 .icon-btn {
   width: 24px;
   height: 24px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
-  background: white;
+  background: var(--bg-primary);
   cursor: pointer;
   font-size: 12px;
   display: flex;
@@ -328,7 +328,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
   justify-content: center;
 }
 .icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.icon-btn.remove-btn { color: #e53e3e; border-color: #feb2b2; }
+.icon-btn.remove-btn { color: var(--error-text); border-color: var(--error-border); }
 .enum-options {
   margin-top: 6px;
   padding-left: 12px;
@@ -341,14 +341,14 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 .option-input {
   flex: 1;
   padding: 3px 6px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
   font-size: 12px;
 }
 .add-option-btn {
   background: none;
   border: none;
-  color: #3182ce;
+  color: var(--accent-blue);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 0;
@@ -359,7 +359,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 }
 .display-hints summary {
   cursor: pointer;
-  color: #666;
+  color: var(--text-secondary);
 }
 .hints-grid {
   display: flex;
@@ -369,19 +369,19 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 .hint-input {
   flex: 1;
   padding: 3px 6px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 3px;
   font-size: 12px;
 }
 .add-field-btn {
   padding: 6px 12px;
-  border: 1px dashed #ccc;
+  border: 1px dashed var(--border-input);
   border-radius: 4px;
-  background: white;
+  background: var(--bg-primary);
   cursor: pointer;
   font-size: 13px;
-  color: #3182ce;
+  color: var(--accent-blue);
   width: 100%;
 }
-.add-field-btn:hover { border-color: #3182ce; }
+.add-field-btn:hover { border-color: var(--accent-blue); }
 </style>

@@ -1,8 +1,88 @@
-/* Global reset for OmniCollect */
+/* OmniCollect theme variables -- light mode (default) */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7fafc;
+  --bg-tertiary: #f0f0f0;
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --bg-input: #ffffff;
+
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --text-muted: #888888;
+  --text-on-accent: #ffffff;
+
+  --border-primary: #e2e8f0;
+  --border-input: #cccccc;
+
+  --accent-blue: #3182ce;
+  --accent-blue-hover: #2c5282;
+  --accent-blue-light: #ebf8ff;
+
+  --btn-secondary-bg: #e2e8f0;
+  --btn-secondary-bg-hover: #cbd5e0;
+
+  --error-text: #c53030;
+  --error-bg: #fed7d7;
+  --error-border: #feb2b2;
+  --required-color: #e53e3e;
+  --success-text: #38a169;
+
+  --overlay-bg: rgba(0, 0, 0, 0.85);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Dark mode */
+:root.dark-theme {
+  --bg-primary: #1a202c;
+  --bg-secondary: #2d3748;
+  --bg-tertiary: #4a5568;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-input: #2d3748;
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #a0aec0;
+  --text-muted: #718096;
+  --text-on-accent: #ffffff;
+
+  --border-primary: #4a5568;
+  --border-input: #4a5568;
+
+  --accent-blue: #63b3ed;
+  --accent-blue-hover: #4299e1;
+  --accent-blue-light: rgba(99, 179, 237, 0.1);
+
+  --btn-secondary-bg: #4a5568;
+  --btn-secondary-bg-hover: #718096;
+
+  --error-text: #fc8181;
+  --error-bg: rgba(252, 129, 129, 0.15);
+  --error-border: #fc8181;
+  --required-color: #fc8181;
+  --success-text: #68d391;
+
+  --overlay-bg: rgba(0, 0, 0, 0.9);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+/* Global reset */
 html {
-    background-color: #fff;
+  background-color: var(--bg-primary);
+  color-scheme: light dark;
 }
 
 #app {
-    height: 100vh;
+  height: 100vh;
+}
+
+/* Form elements inherit theme colors in dark mode */
+input, select, textarea {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+input:disabled, select:disabled, textarea:disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
 }

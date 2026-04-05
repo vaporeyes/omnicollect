@@ -77,7 +77,7 @@ function onClose() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -124,14 +124,14 @@ function onClose() {
   height: 32px;
   border-radius: 50%;
   border: none;
-  background: white;
-  color: #333;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow-md);
   z-index: 1;
 }
 </style>

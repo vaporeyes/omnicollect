@@ -84,18 +84,18 @@ function onImageError(event: Event) {
   gap: 16px;
 }
 .grid-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-primary);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.15s;
 }
 .grid-card:hover {
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: var(--shadow-sm);
 }
 .card-image {
   aspect-ratio: 1;
-  background: #f7fafc;
+  background: var(--bg-secondary);
   overflow: hidden;
 }
 .card-image img {
@@ -109,7 +109,7 @@ function onImageError(event: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f0f0;
+  background: var(--bg-tertiary);
 }
 .card-title {
   padding: 8px 10px 2px;
@@ -124,11 +124,11 @@ function onImageError(event: Event) {
   justify-content: space-between;
   padding: 0 10px 8px;
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 .empty-state {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   padding: 24px;
   text-align: center;
 }

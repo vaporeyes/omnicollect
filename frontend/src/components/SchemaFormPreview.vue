@@ -63,15 +63,15 @@ const formAttributes = computed(() => {
 
 <style scoped>
 .form-preview {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
   padding: 12px;
-  background: #f7fafc;
+  background: var(--bg-secondary);
 }
 .form-preview h4 {
   margin: 0 0 12px 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 .form-field {
   margin-bottom: 12px;
@@ -83,20 +83,20 @@ const formAttributes = computed(() => {
   font-size: 14px;
 }
 .required {
-  color: #e53e3e;
+  color: var(--required-color);
 }
 .field-input {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
-  background: #eee;
+  background: var(--border-primary);
 }
 .empty-state {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   padding: 24px;
   text-align: center;
 }

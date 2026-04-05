@@ -1,7 +1,8 @@
 <script lang="ts" setup>
-import {ref, onMounted} from 'vue'
+import {ref, onMounted, onUnmounted} from 'vue'
 import {main} from '../wailsjs/go/models'
 import {LoadModuleFile, ExportBackup} from '../wailsjs/go/main/App'
+import {WindowSetSystemDefaultTheme} from '../wailsjs/runtime/runtime'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
 import ModuleSelector from './components/ModuleSelector.vue'
@@ -13,6 +14,23 @@ import SchemaBuilder from './components/SchemaBuilder.vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
+
+// Theme detection via system preference
+function applyTheme(dark: boolean) {
+  document.documentElement.classList.toggle('dark-theme', dark)
+}
+
+const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+applyTheme(darkMediaQuery.matches)
+
+function onThemeChange(e: MediaQueryListEvent) {
+  applyTheme(e.matches)
+}
+darkMediaQuery.addEventListener('change', onThemeChange)
+onUnmounted(() => darkMediaQuery.removeEventListener('change', onThemeChange))
+
+// Tell Wails to follow system theme for window chrome
+try { WindowSetSystemDefaultTheme() } catch { /* ok if not available in dev */ }
 
 const selectedSchema = ref<main.ModuleSchema | null>(null)
 const editingItem = ref<main.Item | null>(null)
@@ -222,7 +240,8 @@ function onBuilderClose() {
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  color: #333;
+  color: var(--text-primary);
+  background: var(--bg-primary);
 }
 .app-layout {
   display: flex;
@@ -231,8 +250,8 @@ body {
 .sidebar {
   width: 240px;
   padding: 16px;
-  border-right: 1px solid #e2e8f0;
-  background: #f7fafc;
+  border-right: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
   overflow-y: auto;
 }
 .sidebar h2 {
@@ -243,29 +262,29 @@ body {
   width: 100%;
   padding: 8px;
   margin-bottom: 12px;
-  border: 1px dashed #3182ce;
+  border: 1px dashed var(--accent-blue);
   border-radius: 4px;
-  background: white;
-  color: #3182ce;
+  background: var(--bg-primary);
+  color: var(--accent-blue);
   cursor: pointer;
   font-size: 13px;
 }
 .builder-btn:hover {
-  background: #ebf8ff;
+  background: var(--accent-blue-light);
 }
 .export-btn {
   width: 100%;
   padding: 8px;
   margin-bottom: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
-  background: white;
-  color: #333;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
 }
 .export-btn:hover {
-  background: #f0f0f0;
+  background: var(--bg-tertiary);
 }
 .export-btn:disabled {
   opacity: 0.6;
@@ -273,7 +292,7 @@ body {
 }
 .export-message {
   font-size: 12px;
-  color: #38a169;
+  color: var(--success-text);
   margin-bottom: 8px;
   padding: 4px 0;
 }
@@ -281,15 +300,16 @@ body {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
+  background: var(--bg-primary);
 }
 .loading {
-  color: #888;
+  color: var(--text-muted);
   padding: 24px;
   text-align: center;
 }
 .error-message {
-  background: #fed7d7;
-  color: #c53030;
+  background: var(--error-bg);
+  color: var(--error-text);
   padding: 8px 12px;
   border-radius: 4px;
   margin-bottom: 12px;
@@ -302,15 +322,16 @@ body {
 }
 .view-toggle {
   padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  background: white;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
   border-radius: 4px;
 }
 .view-toggle.active {
-  background: #3182ce;
-  color: white;
-  border-color: #3182ce;
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+  border-color: var(--accent-blue);
 }
 </style>

@@ -90,8 +90,8 @@ function removeImage(index: number) {
   height: 20px;
   border-radius: 50%;
   border: none;
-  background: #e53e3e;
-  color: white;
+  background: var(--error-text);
+  color: var(--text-on-accent);
   font-size: 12px;
   cursor: pointer;
   display: flex;
@@ -104,18 +104,18 @@ function removeImage(index: number) {
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
-  background: #e2e8f0;
-  color: #333;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
 }
 .btn-secondary:hover {
-  background: #cbd5e0;
+  background: var(--btn-secondary-bg-hover);
 }
 .btn-secondary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 .field-error {
-  color: #e53e3e;
+  color: var(--error-text);
   font-size: 12px;
   margin-top: 4px;
 }

@@ -197,7 +197,7 @@ function sortIndicator(key: string): string {
 }
 .filter-select, .search-input {
   padding: 6px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
   font-size: 14px;
 }
@@ -215,10 +215,10 @@ function sortIndicator(key: string): string {
 .data-table th {
   text-align: left;
   padding: 8px 10px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--border-primary);
   font-weight: 600;
   white-space: nowrap;
-  background: #f7fafc;
+  background: var(--bg-secondary);
   position: sticky;
   top: 0;
 }
@@ -227,11 +227,11 @@ function sortIndicator(key: string): string {
   user-select: none;
 }
 .data-table th.sortable:hover {
-  background: #edf2f7;
+  background: var(--bg-hover);
 }
 .data-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-primary);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -241,7 +241,7 @@ function sortIndicator(key: string): string {
   cursor: pointer;
 }
 .data-row:hover {
-  background: rgba(0,0,0,0.02);
+  background: var(--bg-hover);
 }
 .col-title {
   font-weight: 500;
@@ -251,12 +251,12 @@ function sortIndicator(key: string): string {
   font-variant-numeric: tabular-nums;
 }
 .col-date {
-  color: #666;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .empty-state {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   padding: 24px;
   text-align: center;
 }

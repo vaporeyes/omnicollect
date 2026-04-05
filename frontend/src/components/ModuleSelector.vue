@@ -52,7 +52,7 @@ const emit = defineEmits<{
   margin-bottom: 4px;
 }
 .module-item:hover {
-  background: rgba(0,0,0,0.05);
+  background: var(--bg-hover);
 }
 .module-name-row {
   display: flex;
@@ -67,19 +67,19 @@ const emit = defineEmits<{
   border: none;
   cursor: pointer;
   font-size: 14px;
-  color: #888;
+  color: var(--text-muted);
   padding: 0 2px;
 }
 .edit-btn:hover {
-  color: #3182ce;
+  color: var(--accent-blue);
 }
 .module-desc {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
 }
 .empty-state {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted);
   padding: 12px;
 }
 </style>

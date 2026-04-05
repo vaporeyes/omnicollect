@@ -182,7 +182,7 @@ function onCancel() {
   justify-content: space-between;
   align-items: center;
   padding: 8px 0;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-primary);
   margin-bottom: 12px;
 }
 .builder-toolbar h3 {
@@ -195,7 +195,7 @@ function onCancel() {
   align-items: center;
 }
 .save-error {
-  color: #c53030;
+  color: var(--error-text);
   font-size: 13px;
 }
 .btn {
@@ -205,11 +205,11 @@ function onCancel() {
   cursor: pointer;
   font-size: 13px;
 }
-.btn-primary { background: #3182ce; color: white; }
-.btn-primary:hover { background: #2c5282; }
+.btn-primary { background: var(--accent-blue); color: var(--text-on-accent); }
+.btn-primary:hover { background: var(--accent-blue-hover); }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-secondary { background: #e2e8f0; color: #333; }
-.btn-secondary:hover { background: #cbd5e0; }
+.btn-secondary { background: var(--btn-secondary-bg); color: var(--text-primary); }
+.btn-secondary:hover { background: var(--btn-secondary-bg-hover); }
 .builder-panes {
   display: flex;
   flex: 1;

@@ -161,21 +161,21 @@ function onSubmit() {
   font-size: 14px;
 }
 .required {
-  color: #e53e3e;
+  color: var(--required-color);
 }
 .field-input {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
 }
 .has-error .field-input {
-  border-color: #e53e3e;
+  border-color: var(--error-text);
 }
 .field-error {
-  color: #e53e3e;
+  color: var(--error-text);
   font-size: 12px;
   margin-top: 2px;
 }
@@ -192,17 +192,17 @@ function onSubmit() {
   font-size: 14px;
 }
 .btn-primary {
-  background: #3182ce;
-  color: white;
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
 }
 .btn-primary:hover {
-  background: #2c5282;
+  background: var(--accent-blue-hover);
 }
 .btn-secondary {
-  background: #e2e8f0;
-  color: #333;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
 }
 .btn-secondary:hover {
-  background: #cbd5e0;
+  background: var(--btn-secondary-bg-hover);
 }
 </style>

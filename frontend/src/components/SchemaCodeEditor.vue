@@ -28,15 +28,15 @@ const extensions = [json()]
 
 <style scoped>
 .code-editor {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border-primary);
   border-radius: 4px;
   overflow: hidden;
 }
 .parse-error {
-  background: #fed7d7;
-  color: #c53030;
+  background: var(--error-bg);
+  color: var(--error-text);
   padding: 4px 8px;
   font-size: 12px;
-  border-top: 1px solid #feb2b2;
+  border-top: 1px solid var(--error-border);
 }
 </style>
