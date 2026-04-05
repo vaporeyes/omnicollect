@@ -42,7 +42,7 @@ function removeImage(index: number) {
 
     <div v-if="images.length > 0" class="image-previews">
       <div v-for="(filename, idx) in images" :key="filename" class="image-preview">
-        <img :src="'/thumbnails/' + filename" alt="Attached image" />
+        <img :src="'/thumbnails/' + encodeURIComponent(filename)" alt="Attached image" />
         <button type="button" class="remove-btn" @click="removeImage(idx)">x</button>
       </div>
     </div>

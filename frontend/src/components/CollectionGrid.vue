@@ -49,7 +49,7 @@ function onImageError(event: Event) {
         <div class="card-image">
           <img
             v-if="item.images && item.images.length > 0"
-            :src="'/thumbnails/' + item.images[0]"
+            :src="'/thumbnails/' + encodeURIComponent(item.images[0])"
             loading="lazy"
             alt=""
             @error="onImageError"

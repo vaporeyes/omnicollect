@@ -13,7 +13,7 @@ const emit = defineEmits<{
   <div v-if="visible" class="lightbox-overlay" @click="emit('close')">
     <div class="lightbox-content" @click.stop>
       <button class="lightbox-close" @click="emit('close')">x</button>
-      <img :src="'/originals/' + filename" alt="Full resolution" />
+      <img :src="'/originals/' + encodeURIComponent(filename)" alt="Full resolution" />
     </div>
   </div>
 </template>
