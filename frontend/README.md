@@ -1,23 +1,49 @@
-# Vue 3 + TypeScript + Vite
+# OmniCollect Frontend
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue
-3 `<script setup>` SFCs, check out
-the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + TypeScript frontend for OmniCollect, embedded in the Wails
+desktop shell.
 
-## Recommended IDE Setup
+## Structure
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar)
+```
+src/
+  main.ts              # App entry, Pinia registration
+  App.vue              # Root layout: sidebar + main content area
+  style.css            # Global styles
+  stores/
+    moduleStore.ts     # Fetches/caches module schemas from backend
+    collectionStore.ts # Fetches/caches items, handles save/filter/search
+  components/
+    DynamicForm.vue    # Schema-driven form (create + edit modes)
+    FormField.vue      # Single field renderer (type dispatch)
+    ModuleSelector.vue # Collection type picker sidebar
+    ItemList.vue       # List view with filter + search
+    CollectionGrid.vue # Grid view with lazy-loaded thumbnails
+    ImageAttach.vue    # Image file picker + thumbnail preview
+    ImageLightbox.vue  # Full-resolution image overlay
+wailsjs/               # Auto-generated Wails bindings (do not edit)
+```
 
-## Type Support For `.vue` Imports in TS
+## Development
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type
-by default. In most cases this is fine if you don't really care about component prop types outside of templates.
-However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using
-manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+The frontend runs within `wails dev` (Vite dev server with hot reload).
+Do not run `npm run dev` standalone -- Wails manages the dev server.
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look
-   for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default,
-   Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
+## Wails Bindings
 
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+Backend methods are called via generated TypeScript in `wailsjs/go/main/App`:
+
+- `SaveItem(item)` -- Create or update an item
+- `GetItems(query, moduleId)` -- Fetch items with optional search/filter
+- `GetActiveModules()` -- Get all loaded module schemas
+- `ProcessImage(path)` -- Process image, generate thumbnail
+- `SelectImageFile()` -- Open native file dialog
+
+Types are in `wailsjs/go/models.ts` (Item, ModuleSchema, etc.).
+
+## Media URLs
+
+Local media files are served by the Wails AssetServer:
+
+- `/thumbnails/{filename}` -- 300x300 JPEG thumbnails (grid/list views)
+- `/originals/{filename}` -- Full-resolution originals (lightbox only)

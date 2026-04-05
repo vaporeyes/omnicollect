@@ -1,37 +1,60 @@
-# omnicollect Development Guidelines
+# OmniCollect Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-05
+## Project Overview
 
-## Active Technologies
-- Go 1.21+ + Wails v2, modernc.org/sqlite, github.com/google/uuid (001-core-engine-data-ipc)
-- SQLite (local, embedded, CGO-free via modernc.org/sqlite) (001-core-engine-data-ipc)
-- TypeScript 4.6+, Vue 3.2+ (Composition API) + Vue 3, Pinia (state management), Wails runtime (IPC) (002-dynamic-form-engine)
-- N/A (frontend caches only; persistence via Go backend) (002-dynamic-form-engine)
-- Go 1.25+, TypeScript 4.6+, Vue 3.2+ + disintegration/imaging (Go thumbnails), golang.org/x/image/webp (WebP decode) (003-image-processing-grid)
-- Local filesystem (`~/.omnicollect/media/originals/` and `thumbnails/`) (003-image-processing-grid)
+Schema-driven desktop collection manager. Go backend + Vue 3 frontend
+via Wails v2. See [Constitution](.specify/memory/constitution.md) for
+immutable engineering principles.
 
-- (001-core-engine-data-ipc)
+## Tech Stack
+
+- **Go 1.25+**: Backend (SQLite, image processing, Wails bindings)
+- **Vue 3 + TypeScript**: Frontend (Composition API, Pinia stores)
+- **Wails v2**: Desktop shell, type-safe IPC, AssetServer
+- **SQLite**: Local database via `modernc.org/sqlite` (CGO-free)
+- **disintegration/imaging**: Thumbnail generation (CGO-free)
 
 ## Project Structure
 
-```text
-src/
-tests/
+```
+main.go          # Entry point, Wails config, AssetServer handler
+app.go           # Bound methods: SaveItem, GetItems, GetActiveModules,
+                 #   ProcessImage, SelectImageFile
+db.go            # SQLite init, DDL, FTS5 triggers, CRUD helpers
+imaging.go       # Image validation, copy, thumbnail generation
+modules.go       # Module schema loader from ~/.omnicollect/modules/
+models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
+frontend/src/
+  stores/        # Pinia: moduleStore, collectionStore
+  components/    # DynamicForm, FormField, ItemList, CollectionGrid,
+                 #   ModuleSelector, ImageAttach, ImageLightbox
 ```
 
 ## Commands
 
-# Add commands for 
+```bash
+wails dev        # Development with hot reload
+wails build      # Production binary to build/bin/
+go vet ./...     # Lint Go code
+go mod tidy      # Resolve dependencies
+```
 
-## Code Style
+## Key Conventions
 
-: Follow standard conventions
+- All Go files start with two-line ABOUTME comments
+- Wails bindings: exported methods on App struct (no context.Context param)
+- Frontend calls Wails bindings via generated `wailsjs/go/main/App`
+- Media served via AssetServer at /thumbnails/ and /originals/
+- Grid views MUST use thumbnails only (Constitution Principle IV)
+- No hardcoded collection-type templates (Constitution Principle II)
+- Module schemas in `~/.omnicollect/modules/*.json`
+- Database at user config dir (`os.UserConfigDir()`)
 
-## Recent Changes
-- 003-image-processing-grid: Added Go 1.25+, TypeScript 4.6+, Vue 3.2+ + disintegration/imaging (Go thumbnails), golang.org/x/image/webp (WebP decode)
-- 002-dynamic-form-engine: Added TypeScript 4.6+, Vue 3.2+ (Composition API) + Vue 3, Pinia (state management), Wails runtime (IPC)
-- 001-core-engine-data-ipc: Added Go 1.21+ + Wails v2, modernc.org/sqlite, github.com/google/uuid
+## Data Locations
 
+- Database: `~/Library/Application Support/OmniCollect/collection.db`
+- Modules: `~/.omnicollect/modules/`
+- Media: `~/.omnicollect/media/originals/` and `thumbnails/`
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
