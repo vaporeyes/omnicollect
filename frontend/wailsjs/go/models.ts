@@ -121,6 +121,28 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class ProcessImageResult {
+	    filename: string;
+	    originalPath: string;
+	    thumbnailPath: string;
+	    width: number;
+	    height: number;
+	    format: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProcessImageResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filename = source["filename"];
+	        this.originalPath = source["originalPath"];
+	        this.thumbnailPath = source["thumbnailPath"];
+	        this.width = source["width"];
+	        this.height = source["height"];
+	        this.format = source["format"];
+	    }
+	}
 
 }
 

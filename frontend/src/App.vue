@@ -6,6 +6,8 @@ import {useCollectionStore} from './stores/collectionStore'
 import ModuleSelector from './components/ModuleSelector.vue'
 import DynamicForm from './components/DynamicForm.vue'
 import ItemList from './components/ItemList.vue'
+import CollectionGrid from './components/CollectionGrid.vue'
+import ImageLightbox from './components/ImageLightbox.vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
@@ -13,6 +15,11 @@ const collectionStore = useCollectionStore()
 const selectedSchema = ref<main.ModuleSchema | null>(null)
 const editingItem = ref<main.Item | null>(null)
 const showForm = ref(false)
+const viewMode = ref<'list' | 'grid'>('grid')
+
+// Lightbox state
+const lightboxFilename = ref('')
+const lightboxVisible = ref(false)
 
 onMounted(async () => {
   await Promise.all([
@@ -36,6 +43,11 @@ function onItemSelect(item: main.Item) {
   selectedSchema.value = schema
   editingItem.value = item
   showForm.value = true
+}
+
+function onViewImage(_item: main.Item, filename: string) {
+  lightboxFilename.value = filename
+  lightboxVisible.value = true
 }
 
 async function onSave(item: main.Item) {
@@ -89,13 +101,42 @@ function onSearch(query: string) {
         @cancel="onCancel"
       />
 
-      <ItemList
-        v-if="!showForm"
-        :items="collectionStore.items"
-        :modules="moduleStore.modules"
-        @select="onItemSelect"
-        @filterChange="onFilterChange"
-        @search="onSearch"
+      <template v-if="!showForm">
+        <div class="view-controls">
+          <button
+            class="view-toggle"
+            :class="{active: viewMode === 'list'}"
+            @click="viewMode = 'list'"
+          >List</button>
+          <button
+            class="view-toggle"
+            :class="{active: viewMode === 'grid'}"
+            @click="viewMode = 'grid'"
+          >Grid</button>
+        </div>
+
+        <ItemList
+          v-if="viewMode === 'list'"
+          :items="collectionStore.items"
+          :modules="moduleStore.modules"
+          @select="onItemSelect"
+          @filterChange="onFilterChange"
+          @search="onSearch"
+        />
+
+        <CollectionGrid
+          v-if="viewMode === 'grid'"
+          :items="collectionStore.items"
+          :modules="moduleStore.modules"
+          @select="onItemSelect"
+          @viewImage="onViewImage"
+        />
+      </template>
+
+      <ImageLightbox
+        :filename="lightboxFilename"
+        :visible="lightboxVisible"
+        @close="lightboxVisible = false"
       />
     </main>
   </div>
@@ -139,5 +180,23 @@ body {
   border-radius: 4px;
   margin-bottom: 12px;
   font-size: 14px;
+}
+.view-controls {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.view-toggle {
+  padding: 6px 12px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+}
+.view-toggle.active {
+  background: #3182ce;
+  color: white;
+  border-color: #3182ce;
 }
 </style>

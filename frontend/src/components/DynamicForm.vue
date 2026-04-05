@@ -1,7 +1,8 @@
 <script lang="ts" setup>
-import {reactive, watch, computed} from 'vue'
+import {reactive, ref, watch, computed} from 'vue'
 import {main} from '../../wailsjs/go/models'
 import FormField from './FormField.vue'
+import ImageAttach from './ImageAttach.vue'
 
 const props = defineProps<{
   schema: main.ModuleSchema
@@ -19,15 +20,17 @@ const baseFields = reactive({
 })
 
 const attributes = reactive<Record<string, any>>({})
+const itemImages = ref<string[]>([])
 const validationErrors = reactive<Record<string, string>>({})
 
 const isEditing = computed(() => !!props.item?.id)
 
 // Initialize form when item or schema changes
 watch(() => [props.item, props.schema], () => {
-  // Reset base fields
+  // Reset base fields and images
   baseFields.title = props.item?.title ?? ''
   baseFields.purchasePrice = props.item?.purchasePrice ?? null
+  itemImages.value = props.item?.images ? [...props.item.images] : []
 
   // Reset attributes from item or defaults
   const itemAttrs = props.item?.attributes ?? {}
@@ -77,7 +80,7 @@ function onSubmit() {
     moduleId: props.schema.id,
     title: baseFields.title.trim(),
     purchasePrice: baseFields.purchasePrice,
-    images: props.item?.images ?? [],
+    images: itemImages.value,
     attributes: {...attributes},
     createdAt: props.item?.createdAt ?? '',
     updatedAt: '',
@@ -125,6 +128,12 @@ function onSubmit() {
         :modelValue="attributes[attr.name]"
         :errorMessage="validationErrors[attr.name]"
         @update:modelValue="val => attributes[attr.name] = val"
+      />
+
+      <!-- Image attachment -->
+      <ImageAttach
+        :images="itemImages"
+        @update:images="val => itemImages = val"
       />
 
       <div class="form-actions">

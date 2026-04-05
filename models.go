@@ -31,6 +31,16 @@ type AttributeSchema struct {
 	Display  *DisplayHints `json:"display,omitempty"`
 }
 
+// ProcessImageResult contains metadata about a processed image.
+type ProcessImageResult struct {
+	Filename      string `json:"filename"`
+	OriginalPath  string `json:"originalPath"`
+	ThumbnailPath string `json:"thumbnailPath"`
+	Width         int    `json:"width"`
+	Height        int    `json:"height"`
+	Format        string `json:"format"`
+}
+
 // DisplayHints controls how the frontend renders an attribute field.
 type DisplayHints struct {
 	Label       string `json:"label,omitempty"`

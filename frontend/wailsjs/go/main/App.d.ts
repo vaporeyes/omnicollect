@@ -6,4 +6,8 @@ export function GetActiveModules():Promise<Array<main.ModuleSchema>>;
 
 export function GetItems(arg1:string,arg2:string):Promise<Array<main.Item>>;
 
+export function ProcessImage(arg1:string):Promise<main.ProcessImageResult>;
+
 export function SaveItem(arg1:main.Item):Promise<main.Item>;
+
+export function SelectImageFile():Promise<string>;

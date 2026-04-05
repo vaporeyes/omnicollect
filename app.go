@@ -7,6 +7,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the main application struct bound to the Wails frontend.
@@ -73,4 +75,28 @@ func (a *App) GetItems(query string, moduleID string) ([]Item, error) {
 // GetActiveModules returns all module schemas loaded at startup.
 func (a *App) GetActiveModules() ([]ModuleSchema, error) {
 	return a.modules, nil
+}
+
+// ProcessImage validates and processes a local image file.
+// Copies the original and generates a 300x300 JPEG thumbnail.
+func (a *App) ProcessImage(sourcePath string) (ProcessImageResult, error) {
+	if sourcePath == "" {
+		return ProcessImageResult{}, fmt.Errorf("source path is required")
+	}
+	return processImage(sourcePath)
+}
+
+// SelectImageFile opens a native file dialog for selecting an image.
+// Returns the selected file path, or empty string if cancelled.
+func (a *App) SelectImageFile() (string, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Image",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "Images", Pattern: "*.jpg;*.jpeg;*.png;*.gif;*.webp"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("file dialog: %w", err)
+	}
+	return path, nil
 }

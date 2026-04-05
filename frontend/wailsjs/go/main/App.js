@@ -10,6 +10,14 @@ export function GetItems(arg1, arg2) {
   return window['go']['main']['App']['GetItems'](arg1, arg2);
 }
 
+export function ProcessImage(arg1) {
+  return window['go']['main']['App']['ProcessImage'](arg1);
+}
+
 export function SaveItem(arg1) {
   return window['go']['main']['App']['SaveItem'](arg1);
+}
+
+export function SelectImageFile() {
+  return window['go']['main']['App']['SelectImageFile']();
 }
