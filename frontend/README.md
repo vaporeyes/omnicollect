@@ -14,13 +14,17 @@ src/
     moduleStore.ts     # Fetches/caches module schemas from backend
     collectionStore.ts # Fetches/caches items, handles save/filter/search
   components/
-    DynamicForm.vue    # Schema-driven form (create + edit modes)
-    FormField.vue      # Single field renderer (type dispatch)
-    ModuleSelector.vue # Collection type picker sidebar
-    ItemList.vue       # List view with filter + search
-    CollectionGrid.vue # Grid view with lazy-loaded thumbnails
-    ImageAttach.vue    # Image file picker + thumbnail preview
-    ImageLightbox.vue  # Full-resolution image overlay
+    DynamicForm.vue      # Schema-driven form (create + edit modes)
+    FormField.vue        # Single field renderer (type dispatch)
+    ModuleSelector.vue   # Collection type picker sidebar
+    ItemList.vue         # List view with filter + search
+    CollectionGrid.vue   # Grid view with lazy-loaded thumbnails
+    ImageAttach.vue      # Image file picker + thumbnail preview
+    ImageLightbox.vue    # Full-resolution image overlay
+    SchemaBuilder.vue    # Split-pane schema editor (visual + code)
+    SchemaVisualEditor.vue # Visual field builder with drag/reorder
+    SchemaCodeEditor.vue # CodeMirror 6 JSON editor
+    SchemaFormPreview.vue # Live form preview from draft schema
 wailsjs/               # Auto-generated Wails bindings (do not edit)
 ```
 
@@ -37,7 +41,10 @@ Backend methods are called via generated TypeScript in `wailsjs/go/main/App`:
 - `GetItems(query, moduleId)` -- Fetch items with optional search/filter
 - `GetActiveModules()` -- Get all loaded module schemas
 - `ProcessImage(path)` -- Process image, generate thumbnail
-- `SelectImageFile()` -- Open native file dialog
+- `SelectImageFile()` -- Open native file dialog for images
+- `SaveCustomModule(json)` -- Write module schema to disk, hot reload
+- `LoadModuleFile(moduleId)` -- Read module schema JSON for editing
+- `ExportBackup()` -- Create ZIP archive of all data
 
 Types are in `wailsjs/go/models.ts` (Item, ModuleSchema, etc.).
 

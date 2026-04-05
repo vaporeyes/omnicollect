@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -191,15 +192,20 @@ func queryItems(db *sql.DB, query string, moduleID string) ([]Item, error) {
 	var err error
 
 	if query != "" {
+		// Sanitize for FTS5: wrap in quotes, escape internal quotes, append wildcard
+		// for partial matching. Prevents syntax panics from unclosed quotes or
+		// reserved keywords (e.g., AND, OR, NOT) in user input.
+		safeQuery := "\"" + strings.ReplaceAll(query, "\"", "\"\"") + "\"*"
+
 		// FTS5 search path
 		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.attributes, i.created_at, i.updated_at
 			FROM items i
 			JOIN items_fts ON items_fts.rowid = i.rowid
 			WHERE items_fts MATCH ?`
 		if moduleID != "" {
-			rows, err = db.Query(baseSQL+" AND i.module_id = ? ORDER BY rank", query, moduleID)
+			rows, err = db.Query(baseSQL+" AND i.module_id = ? ORDER BY rank", safeQuery, moduleID)
 		} else {
-			rows, err = db.Query(baseSQL+" ORDER BY rank", query)
+			rows, err = db.Query(baseSQL+" ORDER BY rank", safeQuery)
 		}
 	} else if moduleID != "" {
 		rows, err = db.Query(

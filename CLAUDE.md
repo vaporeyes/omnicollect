@@ -8,26 +8,31 @@ immutable engineering principles.
 
 ## Tech Stack
 
-- **Go 1.25+**: Backend (SQLite, image processing, Wails bindings)
+- **Go 1.25+**: Backend (SQLite, image processing, backup, Wails bindings)
 - **Vue 3 + TypeScript**: Frontend (Composition API, Pinia stores)
 - **Wails v2**: Desktop shell, type-safe IPC, AssetServer
 - **SQLite**: Local database via `modernc.org/sqlite` (CGO-free)
 - **disintegration/imaging**: Thumbnail generation (CGO-free)
+- **vue-codemirror**: CodeMirror 6 JSON editor for schema builder
 
 ## Project Structure
 
 ```
 main.go          # Entry point, Wails config, AssetServer handler
 app.go           # Bound methods: SaveItem, GetItems, GetActiveModules,
-                 #   ProcessImage, SelectImageFile
+                 #   ProcessImage, SelectImageFile, SaveCustomModule,
+                 #   LoadModuleFile, ExportBackup
 db.go            # SQLite init, DDL, FTS5 triggers, CRUD helpers
 imaging.go       # Image validation, copy, thumbnail generation
-modules.go       # Module schema loader from ~/.omnicollect/modules/
+backup.go        # ZIP archive export (database + media + modules)
+modules.go       # Module schema loader, save, find helpers
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
 frontend/src/
   stores/        # Pinia: moduleStore, collectionStore
   components/    # DynamicForm, FormField, ItemList, CollectionGrid,
-                 #   ModuleSelector, ImageAttach, ImageLightbox
+                 #   ModuleSelector, ImageAttach, ImageLightbox,
+                 #   SchemaBuilder, SchemaVisualEditor,
+                 #   SchemaCodeEditor, SchemaFormPreview
 ```
 
 ## Commands
@@ -47,8 +52,22 @@ go mod tidy      # Resolve dependencies
 - Media served via AssetServer at /thumbnails/ and /originals/
 - Grid views MUST use thumbnails only (Constitution Principle IV)
 - No hardcoded collection-type templates (Constitution Principle II)
+- README and CLAUDE.md MUST be updated every iteration (Principle VI)
 - Module schemas in `~/.omnicollect/modules/*.json`
 - Database at user config dir (`os.UserConfigDir()`)
+
+## Wails Bindings (App struct methods)
+
+| Method | Purpose |
+|--------|---------|
+| `SaveItem(item)` | Create or update a collection item |
+| `GetItems(query, moduleId)` | Fetch items with optional search/filter |
+| `GetActiveModules()` | Get all loaded module schemas |
+| `ProcessImage(path)` | Process image, generate thumbnail |
+| `SelectImageFile()` | Open native file dialog for images |
+| `SaveCustomModule(json)` | Write module schema to disk, hot reload |
+| `LoadModuleFile(moduleId)` | Read module schema JSON for editing |
+| `ExportBackup()` | Create ZIP archive of all data |
 
 ## Data Locations
 

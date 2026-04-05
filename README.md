@@ -26,6 +26,8 @@ Key rules:
    only. Full-resolution images load on demand.
 5. **Type-Safe IPC**: All frontend-backend communication via
    Wails-generated TypeScript bindings.
+6. **Documentation is Paramount**: README, CLAUDE.md, and spec
+   artifacts MUST be updated with every iteration.
 
 ## Prerequisites
 
@@ -51,7 +53,9 @@ The production binary is at `build/bin/omnicollect.app` (macOS).
 
 ## Adding a Collection Type
 
-Create a JSON schema file in `~/.omnicollect/modules/`:
+Use the built-in **Schema Builder** (click "+ New Schema" in the
+sidebar) to create collection types visually with a live form preview.
+Or create a JSON schema file manually in `~/.omnicollect/modules/`:
 
 ```json
 {
@@ -81,7 +85,8 @@ Create a JSON schema file in `~/.omnicollect/modules/`:
 }
 ```
 
-Restart the app. The new collection type appears in the sidebar.
+Restart the app (or save via the Schema Builder for instant reload).
+The new collection type appears in the sidebar.
 
 ### Supported Attribute Types
 
@@ -108,10 +113,12 @@ Each attribute can include a `display` object:
 omnicollect/
   main.go              # Wails entry point, AssetServer config
   app.go               # App struct: SaveItem, GetItems, GetActiveModules,
-                       #   ProcessImage, SelectImageFile
+                       #   ProcessImage, SelectImageFile, SaveCustomModule,
+                       #   LoadModuleFile, ExportBackup
   db.go                # SQLite init, schema, FTS5 triggers, CRUD
   imaging.go           # Image validation, thumbnail generation
-  modules.go           # Module schema loader
+  backup.go            # ZIP archive export (database + media + modules)
+  modules.go           # Module schema loader + save/find helpers
   models.go            # Shared types (Item, ModuleSchema, etc.)
   wails.json           # Wails project config
   frontend/
@@ -129,6 +136,10 @@ omnicollect/
         CollectionGrid.vue   # Grid view with lazy thumbnails
         ImageAttach.vue      # Image file picker + attachment
         ImageLightbox.vue    # Full-resolution image overlay
+        SchemaBuilder.vue    # Split-pane schema editor
+        SchemaVisualEditor.vue # Visual field builder
+        SchemaCodeEditor.vue # CodeMirror JSON editor
+        SchemaFormPreview.vue # Live form preview
     wailsjs/           # Auto-generated Wails bindings (do not edit)
 ```
 
@@ -161,6 +172,15 @@ All data is stored locally:
 |---------|---------|
 | `vue` | UI framework |
 | `pinia` | State management |
+| `vue-codemirror` | CodeMirror 6 editor wrapper |
+| `@codemirror/lang-json` | JSON syntax highlighting |
+
+## Backup & Export
+
+Click "Export Backup" in the sidebar to create a complete ZIP archive
+containing the database, all media files, and module schemas. The
+archive is self-contained and can be used for manual recovery or
+transfer to another machine.
 
 ## Iteration History
 
@@ -171,3 +191,8 @@ All data is stored locally:
 3. **Image Processing & Grid** (003): Thumbnail generation, Wails
    AssetServer for local media, collection grid with lazy loading,
    full-resolution lightbox
+4. **Schema Visual Builder** (004): Split-pane schema editor with
+   visual drag-and-drop field builder, CodeMirror JSON editor with
+   bidirectional sync, live form preview, save-to-disk with hot reload
+5. **Backup Export & Sync Prep** (005): ZIP archive export of
+   database + media + modules, UTC timestamp hardening for future sync

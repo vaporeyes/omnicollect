@@ -1,26 +1,15 @@
 <!--
   Sync Impact Report
   ====================
-  Version change: N/A (template) -> 1.0.0
-  Modified principles: None (initial ratification)
-  Added sections:
-    - Principle I: Local-First Mandate
-    - Principle II: Schema-Driven UI
-    - Principle III: Flat Data Architecture
-    - Principle IV: Performance & Memory Protection
-    - Principle V: Type-Safe IPC
-    - Principle VI: Documentation is Paramount
-    - Technology Stack (Section 2)
-    - Compliance Review (Section 3)
-    - Governance
+  Version change: 1.0.0 -> 1.1.0
+  Modified principles:
+    - Principle VI: Documentation is Paramount (materially expanded)
+  Added sections: None
   Removed sections: None
   Templates requiring updates:
     - .specify/templates/plan-template.md: ✅ No updates needed
-      (Constitution Check section is dynamically filled)
     - .specify/templates/spec-template.md: ✅ No updates needed
-      (Requirements section is generic)
     - .specify/templates/tasks-template.md: ✅ No updates needed
-      (Task phases are generic)
   Follow-up TODOs: None
 -->
 
@@ -89,12 +78,23 @@ prohibited.
 ### VI. Documentation is Paramount
 
 All features, APIs, and architectural decisions MUST be documented.
+Documentation is a deliverable, not an afterthought.
 
 - Public functions and exported types MUST have meaningful
   documentation.
 - Architectural decisions MUST be recorded with rationale.
 - User-facing features MUST include usage documentation before a
   feature is considered complete.
+- The project README MUST be updated as part of every iteration to
+  reflect new features, changed project structure, and updated
+  dependency lists. A feature is not complete until the README
+  accurately describes the current state of the application.
+- CLAUDE.md (or equivalent agent context file) MUST be updated to
+  reflect new bindings, components, conventions, and data locations
+  added by each iteration.
+- Each iteration MUST produce spec artifacts (spec.md, plan.md,
+  research.md, data-model.md, contracts/, quickstart.md, tasks.md)
+  in the `specs/` directory before implementation begins.
 
 ## Technology Stack
 
@@ -132,4 +132,4 @@ OmniCollect project. Amendments follow this procedure:
 4. Update any dependent templates or documentation as identified in
    the Sync Impact Report.
 
-**Version**: 1.0.0 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-04
+**Version**: 1.1.0 | **Ratified**: 2026-04-04 | **Last Amended**: 2026-04-05
