@@ -1,88 +1,100 @@
-/* OmniCollect theme variables -- light mode (default) */
+/* OmniCollect theme -- CSS variable fallbacks.
+   Poline generates and applies actual values at runtime via theme.ts.
+   These fallbacks ensure the app renders before JS initializes. */
 :root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f7fafc;
-  --bg-tertiary: #f0f0f0;
-  --bg-hover: rgba(0, 0, 0, 0.03);
-  --bg-input: #ffffff;
+  --bg-primary: #fafaf8;
+  --bg-secondary: #f4f3f0;
+  --bg-tertiary: #eae8e4;
+  --bg-hover: hsla(200, 40%, 45%, 0.06);
+  --bg-input: #fdfdfb;
 
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --text-muted: #888888;
-  --text-on-accent: #ffffff;
+  --text-primary: hsl(220, 15%, 18%);
+  --text-secondary: hsl(220, 10%, 40%);
+  --text-muted: hsl(220, 8%, 58%);
+  --text-on-accent: hsl(220, 5%, 99%);
 
-  --border-primary: #e2e8f0;
-  --border-input: #cccccc;
+  --border-primary: hsl(220, 12%, 84%);
+  --border-input: hsl(220, 10%, 78%);
 
-  --accent-blue: #3182ce;
-  --accent-blue-hover: #2c5282;
-  --accent-blue-light: #ebf8ff;
+  --accent-blue: hsl(200, 55%, 45%);
+  --accent-blue-hover: hsl(200, 60%, 37%);
+  --accent-blue-light: hsla(200, 55%, 45%, 0.1);
 
-  --btn-secondary-bg: #e2e8f0;
-  --btn-secondary-bg-hover: #cbd5e0;
+  --btn-secondary-bg: hsl(220, 12%, 88%);
+  --btn-secondary-bg-hover: hsl(220, 14%, 82%);
 
-  --error-text: #c53030;
-  --error-bg: #fed7d7;
-  --error-border: #feb2b2;
-  --required-color: #e53e3e;
-  --success-text: #38a169;
+  --error-text: hsl(0, 65%, 45%);
+  --error-bg: hsl(0, 70%, 95%);
+  --error-border: hsl(0, 60%, 80%);
+  --required-color: hsl(0, 65%, 50%);
+  --success-text: hsl(150, 50%, 38%);
 
-  --overlay-bg: rgba(0, 0, 0, 0.85);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --overlay-bg: hsla(220, 20%, 10%, 0.85);
+  --shadow-sm: 0 1px 3px hsla(220, 10%, 20%, 0.08), 0 1px 2px hsla(220, 10%, 20%, 0.06);
+  --shadow-md: 0 4px 12px hsla(220, 10%, 20%, 0.12), 0 2px 4px hsla(220, 10%, 20%, 0.08);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
 }
 
-/* Dark mode */
-:root.dark-theme {
-  --bg-primary: #1a202c;
-  --bg-secondary: #2d3748;
-  --bg-tertiary: #4a5568;
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --bg-input: #2d3748;
-
-  --text-primary: #e2e8f0;
-  --text-secondary: #a0aec0;
-  --text-muted: #718096;
-  --text-on-accent: #ffffff;
-
-  --border-primary: #4a5568;
-  --border-input: #4a5568;
-
-  --accent-blue: #63b3ed;
-  --accent-blue-hover: #4299e1;
-  --accent-blue-light: rgba(99, 179, 237, 0.1);
-
-  --btn-secondary-bg: #4a5568;
-  --btn-secondary-bg-hover: #718096;
-
-  --error-text: #fc8181;
-  --error-bg: rgba(252, 129, 129, 0.15);
-  --error-border: #fc8181;
-  --required-color: #fc8181;
-  --success-text: #68d391;
-
-  --overlay-bg: rgba(0, 0, 0, 0.9);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.5);
-}
-
-/* Global reset */
+/* Global reset and typography */
 html {
   background-color: var(--bg-primary);
   color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 #app {
   height: 100vh;
 }
 
-/* Form elements inherit theme colors in dark mode */
+/* Form elements inherit theme in both modes */
+input, select, textarea, button {
+  font-family: inherit;
+}
+
 input, select, textarea {
   background: var(--bg-input);
   color: var(--text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px var(--accent-blue-light);
 }
 
 input:disabled, select:disabled, textarea:disabled {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
+  cursor: not-allowed;
+}
+
+/* Smooth scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-primary);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-input);
+}
+
+/* Selection highlight matches accent */
+::selection {
+  background: var(--accent-blue-light);
+  color: var(--text-primary);
 }

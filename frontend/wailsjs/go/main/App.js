@@ -18,6 +18,10 @@ export function LoadModuleFile(arg1) {
   return window['go']['main']['App']['LoadModuleFile'](arg1);
 }
 
+export function LoadSettings() {
+  return window['go']['main']['App']['LoadSettings']();
+}
+
 export function ProcessImage(arg1) {
   return window['go']['main']['App']['ProcessImage'](arg1);
 }
@@ -28,6 +32,10 @@ export function SaveCustomModule(arg1) {
 
 export function SaveItem(arg1) {
   return window['go']['main']['App']['SaveItem'](arg1);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
 export function SelectImageFile() {
