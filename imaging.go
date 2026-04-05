@@ -66,8 +66,26 @@ func validateImage(path string) (format string, width, height int, err error) {
 	return fmt_str, cfg.Width, cfg.Height, nil
 }
 
+// maxImageFileSize is the maximum file size (in bytes) accepted for
+// image processing. Larger files would cause excessive memory usage
+// during full-image decode. 30 MB covers high-res DSLR JPEGs; users
+// with larger TIFFs should convert before importing.
+const maxImageFileSize = 30 * 1024 * 1024
+
 // processImage validates, copies the original, and generates a thumbnail.
 func processImage(sourcePath string) (ProcessImageResult, error) {
+	// Check file size before expensive decode
+	info, err := os.Stat(sourcePath)
+	if err != nil {
+		return ProcessImageResult{}, fmt.Errorf("reading file info: %w", err)
+	}
+	if info.Size() > maxImageFileSize {
+		sizeMB := info.Size() / (1024 * 1024)
+		return ProcessImageResult{}, fmt.Errorf(
+			"image too large (%d MB). Maximum supported size is %d MB",
+			sizeMB, maxImageFileSize/(1024*1024))
+	}
+
 	format, width, height, err := validateImage(sourcePath)
 	if err != nil {
 		return ProcessImageResult{}, err
