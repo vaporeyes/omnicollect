@@ -175,9 +175,10 @@ function sortIndicator(key: string): string {
         </thead>
         <tbody>
           <tr
-            v-for="item in sortedItems"
+            v-for="(item, index) in sortedItems"
             :key="item.id"
-            class="data-row"
+            class="data-row animate-fade-in"
+            :style="{ animationDelay: `${index * 0.03}s` }"
             @click="emit('select', item)"
           >
             <td class="col-title">{{ item.title }}</td>

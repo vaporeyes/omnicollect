@@ -236,10 +236,10 @@ function onSettingsClose() {
 
 <template>
   <div class="app-layout">
-    <aside class="sidebar">
-      <h2>OmniCollect</h2>
-      <button class="builder-btn" @click="openNewSchemaBuilder">+ New Schema</button>
-      <div class="sidebar-scroll">
+    <aside class="sidebar animate-slide-up delay-1">
+      <h2 class="animate-fade-in delay-2">OmniCollect</h2>
+      <button class="builder-btn animate-fade-in delay-3" @click="openNewSchemaBuilder">+ New Schema</button>
+      <div class="sidebar-scroll animate-fade-in delay-4">
         <ModuleSelector
           :modules="moduleStore.modules"
           @select="onModuleSelect"
@@ -247,7 +247,7 @@ function onSettingsClose() {
           @createSchema="openNewSchemaBuilder"
         />
       </div>
-      <div class="sidebar-bottom">
+      <div class="sidebar-bottom animate-fade-in delay-5">
         <div v-if="exportMessage" class="export-message">{{ exportMessage }}</div>
         <button class="export-btn" :disabled="exporting" @click="onExportBackup">
           {{ exporting ? 'Exporting...' : 'Export Backup' }}
@@ -256,7 +256,7 @@ function onSettingsClose() {
       </div>
     </aside>
 
-    <main class="main-content">
+    <main class="main-content animate-slide-up delay-2">
       <div v-if="moduleStore.loading || collectionStore.loading" class="loading">
         Loading...
       </div>

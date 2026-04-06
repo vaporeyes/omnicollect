@@ -17,7 +17,7 @@
   --bg-input: #fdfdfb;
 
   /* Glass blur intensity applied via backdrop-filter */
-  --glass-blur: 12px;
+  --glass-blur: 16px;
 
   --text-primary: hsl(220, 15%, 18%);
   --text-secondary: hsl(220, 10%, 40%);
@@ -42,23 +42,25 @@
   --success-text: hsl(150, 50%, 38%);
 
   --overlay-bg: hsla(220, 20%, 10%, 0.85);
-  --shadow-sm: 0 1px 3px hsla(220, 10%, 20%, 0.08), 0 1px 2px hsla(220, 10%, 20%, 0.06);
-  --shadow-md: 0 4px 12px hsla(220, 10%, 20%, 0.12), 0 2px 4px hsla(220, 10%, 20%, 0.08);
+  --shadow-sm: 0 2px 8px hsla(220, 10%, 20%, 0.04), 0 1px 2px hsla(220, 10%, 20%, 0.02);
+  --shadow-md: 0 8px 24px hsla(220, 10%, 20%, 0.08), 0 4px 8px hsla(220, 10%, 20%, 0.04);
+  --shadow-lg: 0 16px 48px hsla(220, 10%, 20%, 0.12), 0 8px 16px hsla(220, 10%, 20%, 0.06);
 
   /* Softer corners */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.25s ease;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --transition-fast: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-normal: 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 
   /* Typography -- tracking for uppercase, tight line-height for data */
-  --tracking-tight: -0.01em;
+  --tracking-tight: -0.02em;
   --tracking-normal: 0;
-  --tracking-wide: 0.06em;
-  --leading-tight: 1.25;
+  --tracking-wide: 0.08em;
+  --leading-tight: 1.2;
   --leading-normal: 1.5;
-  --leading-dense: 1.15;
+  --leading-dense: 1.1;
 }
 
 /* Global reset and typography */
@@ -69,6 +71,42 @@ html {
 
 * {
   box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: var(--leading-normal);
+  font-size: 15px;
+  letter-spacing: var(--tracking-tight);
+  
+  /* Atmospheric background: subtle mesh gradient + noise */
+  background-image: 
+    radial-gradient(circle at 15% 50%, hsla(200, 55%, 45%, 0.03), transparent 25%),
+    radial-gradient(circle at 85% 30%, hsla(35, 65%, 55%, 0.03), transparent 25%);
+  background-attachment: fixed;
+}
+
+/* Add a subtle grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-top: 0;
 }
 
 #app {
@@ -83,13 +121,16 @@ input, select, textarea, button {
 input, select, textarea {
   background: var(--bg-input);
   color: var(--text-primary);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-input);
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px var(--accent-blue-light);
+  background: var(--bg-primary);
 }
 
 input:disabled, select:disabled, textarea:disabled {
@@ -100,15 +141,15 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Smooth scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-primary);
-  border-radius: 4px;
+  border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-input);
@@ -124,12 +165,16 @@ input:disabled, select:disabled, textarea:disabled {
 .glass {
   -webkit-backdrop-filter: blur(var(--glass-blur));
   backdrop-filter: blur(var(--glass-blur));
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
 }
 
 /* Typography helpers */
 .text-uppercase {
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 600;
 }
 
 .leading-dense {
@@ -138,4 +183,73 @@ input:disabled, select:disabled, textarea:disabled {
 
 .leading-tight {
   line-height: var(--leading-tight);
+}
+
+/* --- Animations --- */
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up var(--transition-slow) both;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--transition-slow) both;
+}
+
+.animate-scale-up {
+  animation: scale-up var(--transition-slow) both;
+}
+
+/* Stagger delays */
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.1s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.2s; }
+.delay-5 { animation-delay: 0.25s; }
+.delay-6 { animation-delay: 0.3s; }
+
+/* fade-slide: content panels slide up slightly and fade in */
+.fade-slide-enter-active {
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
+}
+.fade-slide-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(15px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }

@@ -48,9 +48,10 @@ function onImageError(event: Event) {
 
     <div v-else class="grid">
       <div
-        v-for="item in items"
+        v-for="(item, index) in items"
         :key="item.id"
-        class="grid-card"
+        class="grid-card animate-scale-up"
+        :style="{ animationDelay: `${index * 0.05}s` }"
         @click="emit('select', item)"
       >
         <div class="card-image">

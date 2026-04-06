@@ -25,9 +25,10 @@ const emit = defineEmits<{
     </div>
     <ul v-else class="module-list">
       <li
-        v-for="mod in modules"
+        v-for="(mod, index) in modules"
         :key="mod.id"
-        class="module-item"
+        class="module-item animate-slide-up"
+        :style="{ animationDelay: `${index * 0.05}s` }"
         @click="emit('select', mod)"
       >
         <span class="module-name-row">
