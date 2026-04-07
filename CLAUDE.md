@@ -32,7 +32,9 @@ frontend/src/
   components/    # DynamicForm, FormField, ItemList, CollectionGrid,
                  #   ModuleSelector, ImageAttach, ImageLightbox,
                  #   SchemaBuilder, SchemaVisualEditor,
-                 #   SchemaCodeEditor, SchemaFormPreview
+                 #   SchemaCodeEditor, SchemaFormPreview,
+                 #   ItemDetail, SettingsPage, ToastProvider,
+                 #   ContextMenu, CommandPalette
 ```
 
 ## Commands
@@ -55,6 +57,12 @@ go mod tidy      # Resolve dependencies
 - README and CLAUDE.md MUST be updated every iteration (Principle VI)
 - Module schemas in `~/.omnicollect/modules/*.json`
 - Database at user config dir (`os.UserConfigDir()`)
+- Global shortcuts: Cmd/Ctrl+K (command palette), Cmd/Ctrl+F (search),
+  Cmd/Ctrl+N (new item), Escape (close overlays)
+- Command palette (`CommandPalette.vue`): cross-module search via
+  `collectionStore.searchAllItems()`, quick actions via keyword matching
+- Toast notifications via `useToastStore` (replace all alert() calls)
+- Context menus on items in list/grid views via `ContextMenu.vue`
 
 ## Wails Bindings (App struct methods)
 
@@ -78,3 +86,10 @@ go mod tidy      # Resolve dependencies
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
+
+## Active Technologies
+- Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API (006-command-palette)
+- SQLite via modernc.org/sqlite (existing FTS5 full-text search) (006-command-palette)
+
+## Recent Changes
+- 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

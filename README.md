@@ -132,14 +132,21 @@ omnicollect/
         DynamicForm.vue      # Schema-driven form renderer
         FormField.vue        # Type-dispatched field input
         ModuleSelector.vue   # Collection type picker
-        ItemList.vue         # List view with search
-        CollectionGrid.vue   # Grid view with lazy thumbnails
+        ItemList.vue         # List view with search + context menu
+        CollectionGrid.vue   # Grid view with lazy thumbnails + context menu
+        ItemDetail.vue       # Premium split-layout item detail view
         ImageAttach.vue      # Image file picker + attachment
         ImageLightbox.vue    # Full-resolution image overlay
         SchemaBuilder.vue    # Split-pane schema editor
         SchemaVisualEditor.vue # Visual field builder
         SchemaCodeEditor.vue # CodeMirror JSON editor
         SchemaFormPreview.vue # Live form preview
+        SettingsPage.vue     # Theme configuration
+        CommandPalette.vue   # Spotlight-style search overlay (Cmd/Ctrl+K)
+        ContextMenu.vue      # Right-click context menu
+        ToastProvider.vue    # Global toast notifications
+      stores/
+        toastStore.ts        # Toast notification queue
     wailsjs/           # Auto-generated Wails bindings (do not edit)
 ```
 
@@ -175,6 +182,22 @@ All data is stored locally:
 | `vue-codemirror` | CodeMirror 6 editor wrapper |
 | `@codemirror/lang-json` | JSON syntax highlighting |
 
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Cmd/Ctrl+K | Toggle command palette (search items + quick actions) |
+| Cmd/Ctrl+F | Focus search bar (switches to list view) |
+| Cmd/Ctrl+N | New item for active collection module |
+| Escape | Close topmost overlay (palette, lightbox, form, detail, builder, settings) |
+
+The **Command Palette** provides instant access to any item across all
+modules. Type keywords to surface quick actions: "new" (create item/schema),
+"settings", "backup"/"export". Navigate results with arrow keys and Enter.
+
+Right-click any item in list or grid view for a context menu with
+View, Edit, and Delete actions.
+
 ## Backup & Export
 
 Click "Export Backup" in the sidebar to create a complete ZIP archive
@@ -196,3 +219,8 @@ transfer to another machine.
    bidirectional sync, live form preview, save-to-disk with hot reload
 5. **Backup Export & Sync Prep** (005): ZIP archive export of
    database + media + modules, UTC timestamp hardening for future sync
+6. **UX & Power User Features** (006): Command palette (Cmd/Ctrl+K)
+   for cross-module item search and quick actions, global keyboard
+   shortcuts (Cmd+F/N/Esc), right-click context menus, toast
+   notifications, item delete with confirmation, premium split-layout
+   item detail view with Instrument Serif/Outfit typography

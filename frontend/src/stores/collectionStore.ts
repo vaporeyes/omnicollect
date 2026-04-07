@@ -45,6 +45,11 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
+  async function searchAllItems(query: string): Promise<main.Item[]> {
+    if (!query) return []
+    return await GetItems(query, '')
+  }
+
   function setFilter(moduleId: string) {
     activeModuleId.value = moduleId
     fetchItems()
@@ -55,5 +60,5 @@ export const useCollectionStore = defineStore('collection', () => {
     fetchItems()
   }
 
-  return {items, loading, error, activeModuleId, searchQuery, fetchItems, saveItem, deleteItem, setFilter, setSearch}
+  return {items, loading, error, activeModuleId, searchQuery, fetchItems, saveItem, deleteItem, searchAllItems, setFilter, setSearch}
 })

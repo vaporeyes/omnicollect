@@ -15,6 +15,7 @@ import SchemaBuilder from './components/SchemaBuilder.vue'
 import ItemDetail from './components/ItemDetail.vue'
 import SettingsPage from './components/SettingsPage.vue'
 import ToastProvider from './components/ToastProvider.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import type {MenuOption} from './components/ContextMenu.vue'
 import {useToastStore} from './stores/toastStore'
@@ -80,6 +81,9 @@ const ctxOptions: MenuOption[] = [
   {label: 'Delete', action: 'delete', destructive: true},
 ]
 
+// Command palette state
+const showPalette = ref(false)
+
 // Schema builder state
 const showBuilder = ref(false)
 const builderModuleId = ref<string | null>(null)
@@ -137,8 +141,16 @@ async function onDeleteItem(item: main.Item) {
 function onGlobalKeydown(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey
 
+  // Cmd/Ctrl+K: toggle command palette
+  if (mod && e.key === 'k') {
+    e.preventDefault()
+    showPalette.value = !showPalette.value
+    return
+  }
+
   // Escape: close topmost overlay
   if (e.key === 'Escape') {
+    if (showPalette.value) { showPalette.value = false; return }
     if (lightboxVisible.value) { lightboxVisible.value = false; return }
     if (ctxVisible.value) { ctxVisible.value = false; return }
     if (showForm.value) { onCancel(); return }
@@ -288,6 +300,30 @@ function onFilterChange(moduleId: string) {
 
 function onSearch(query: string) {
   collectionStore.setSearch(query)
+}
+
+// Command palette handlers
+function onPaletteSelectItem(item: main.Item) {
+  showPalette.value = false
+  onItemSelect(item)
+}
+
+function onPaletteAction(action: string) {
+  showPalette.value = false
+  if (action === 'newItem') {
+    const activeId = collectionStore.activeModuleId
+    const mod = activeId
+      ? moduleStore.getModuleById(activeId)
+      : moduleStore.modules[0] ?? null
+    if (mod) onModuleSelect(mod)
+    else toastStore.show('Create a collection schema first', 'info')
+  } else if (action === 'newSchema') {
+    openNewSchemaBuilder()
+  } else if (action === 'openSettings') {
+    openSettings()
+  } else if (action === 'exportBackup') {
+    onExportBackup()
+  }
 }
 
 // Export backup state
@@ -481,6 +517,12 @@ function onSettingsClose() {
       />
     </main>
 
+    <CommandPalette
+      :visible="showPalette"
+      @close="showPalette = false"
+      @selectItem="onPaletteSelectItem"
+      @action="onPaletteAction"
+    />
     <ContextMenu
       :visible="ctxVisible"
       :x="ctxX"
