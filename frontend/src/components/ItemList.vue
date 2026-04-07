@@ -13,10 +13,18 @@ const emit = defineEmits<{
   filterChange: [moduleId: string]
   search: [query: string]
   addItem: []
+  itemContextMenu: [item: main.Item, x: number, y: number]
 }>()
 
 const searchText = ref('')
+const searchInputEl = ref<HTMLInputElement | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function focusSearch() {
+  searchInputEl.value?.focus()
+}
+
+defineExpose({focusSearch})
 
 function onSearchInput() {
   if (debounceTimer) clearTimeout(debounceTimer)
@@ -127,6 +135,7 @@ function sortIndicator(key: string): string {
         </option>
       </select>
       <input
+        ref="searchInputEl"
         type="text"
         v-model="searchText"
         @input="onSearchInput"
@@ -180,6 +189,7 @@ function sortIndicator(key: string): string {
             class="data-row animate-fade-in"
             :style="{ animationDelay: `${index * 0.03}s` }"
             @click="emit('select', item)"
+            @contextmenu.prevent="emit('itemContextMenu', item, $event.clientX, $event.clientY)"
           >
             <td class="col-title">{{ item.title }}</td>
             <td v-if="!activeSchema">{{ moduleName(item.moduleId) }}</td>

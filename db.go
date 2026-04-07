@@ -225,6 +225,19 @@ func queryItems(db *sql.DB, query string, moduleID string) ([]Item, error) {
 	return scanItems(rows)
 }
 
+// deleteItem removes an item from the database by ID.
+func deleteItem(db *sql.DB, id string) error {
+	result, err := db.Exec(`DELETE FROM items WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("deleting item: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("item not found: %s", id)
+	}
+	return nil
+}
+
 // scanItems reads item rows from a query result set.
 func scanItems(rows *sql.Rows) ([]Item, error) {
 	var items []Item

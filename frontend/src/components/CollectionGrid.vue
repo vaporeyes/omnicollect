@@ -10,6 +10,7 @@ const emit = defineEmits<{
   select: [item: main.Item]
   viewImage: [item: main.Item, filename: string]
   addItem: []
+  itemContextMenu: [item: main.Item, x: number, y: number]
 }>()
 
 function moduleName(moduleId: string): string {
@@ -53,6 +54,7 @@ function onImageError(event: Event) {
         class="grid-card animate-scale-up"
         :style="{ animationDelay: `${index * 0.05}s` }"
         @click="emit('select', item)"
+        @contextmenu.prevent="emit('itemContextMenu', item, $event.clientX, $event.clientY)"
       >
         <div class="card-image">
           <img

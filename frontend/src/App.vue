@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {ref, onMounted, onUnmounted} from 'vue'
+import {ref, nextTick, onMounted, onUnmounted} from 'vue'
 import {main} from '../wailsjs/go/models'
 import {LoadModuleFile, ExportBackup, LoadSettings} from '../wailsjs/go/main/App'
 import {WindowSetSystemDefaultTheme} from '../wailsjs/runtime/runtime'
@@ -14,9 +14,14 @@ import ImageLightbox from './components/ImageLightbox.vue'
 import SchemaBuilder from './components/SchemaBuilder.vue'
 import ItemDetail from './components/ItemDetail.vue'
 import SettingsPage from './components/SettingsPage.vue'
+import ToastProvider from './components/ToastProvider.vue'
+import ContextMenu from './components/ContextMenu.vue'
+import type {MenuOption} from './components/ContextMenu.vue'
+import {useToastStore} from './stores/toastStore'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
+const toastStore = useToastStore()
 
 // Theme configuration, loaded from settings on mount
 const themeConfig = ref<ThemeConfig>(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
@@ -41,7 +46,10 @@ function onThemeChange(e: MediaQueryListEvent) {
   refreshTheme()
 }
 darkMediaQuery.addEventListener('change', onThemeChange)
-onUnmounted(() => darkMediaQuery.removeEventListener('change', onThemeChange))
+onUnmounted(() => {
+  darkMediaQuery.removeEventListener('change', onThemeChange)
+  document.removeEventListener('keydown', onGlobalKeydown)
+})
 
 // Tell Wails to follow system theme for window chrome
 try { WindowSetSystemDefaultTheme() } catch { /* ok if not available in dev */ }
@@ -54,16 +62,126 @@ const showForm = ref(false)
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
 
+// Template ref for search focus
+const itemListRef = ref<InstanceType<typeof ItemList> | null>(null)
+
 // Lightbox state
 const lightboxFilename = ref('')
 const lightboxVisible = ref(false)
+
+// Context menu state
+const ctxVisible = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxItem = ref<main.Item | null>(null)
+const ctxOptions: MenuOption[] = [
+  {label: 'View Details', action: 'view'},
+  {label: 'Edit', action: 'edit'},
+  {label: 'Delete', action: 'delete', destructive: true},
+]
 
 // Schema builder state
 const showBuilder = ref(false)
 const builderModuleId = ref<string | null>(null)
 const builderInitialJSON = ref<string | null>(null)
 
+// Context menu handlers
+function onItemContextMenu(item: main.Item, x: number, y: number) {
+  ctxItem.value = item
+  ctxX.value = x
+  ctxY.value = y
+  ctxVisible.value = true
+}
+
+function onCtxSelect(action: string) {
+  const item = ctxItem.value
+  if (!item) return
+  if (action === 'view') {
+    onItemSelect(item)
+  } else if (action === 'edit') {
+    const schema = moduleStore.getModuleById(item.moduleId)
+    if (!schema) {
+      toastStore.show(`Schema not available for "${item.moduleId}"`, 'error')
+      return
+    }
+    selectedSchema.value = schema
+    editingItem.value = item
+    viewingItem.value = item
+    viewingSchema.value = schema
+    showForm.value = true
+    showDetail.value = false
+    showBuilder.value = false
+  } else if (action === 'delete') {
+    onDeleteItem(item)
+  }
+}
+
+// Shared delete logic for both detail view and context menu
+async function onDeleteItem(item: main.Item) {
+  const title = item.title
+  try {
+    await collectionStore.deleteItem(item.id)
+    // If we were viewing this item, close the detail view
+    if (viewingItem.value?.id === item.id) {
+      showDetail.value = false
+      viewingItem.value = null
+      viewingSchema.value = null
+    }
+    toastStore.show(`"${title}" deleted`, 'success')
+  } catch {
+    toastStore.show(collectionStore.error ?? 'Failed to delete item', 'error')
+  }
+}
+
+// Global keyboard shortcuts
+function onGlobalKeydown(e: KeyboardEvent) {
+  const mod = e.metaKey || e.ctrlKey
+
+  // Escape: close topmost overlay
+  if (e.key === 'Escape') {
+    if (lightboxVisible.value) { lightboxVisible.value = false; return }
+    if (ctxVisible.value) { ctxVisible.value = false; return }
+    if (showForm.value) { onCancel(); return }
+    if (showDetail.value) { onCloseDetail(); return }
+    if (showBuilder.value) { onBuilderClose(); return }
+    if (showSettings.value) { onSettingsClose(); return }
+    return
+  }
+
+  // Cmd/Ctrl+F: focus search (switch to list view if needed)
+  if (mod && e.key === 'f') {
+    e.preventDefault()
+    // Close overlays first
+    showForm.value = false
+    showDetail.value = false
+    showBuilder.value = false
+    showSettings.value = false
+    if (viewMode.value !== 'list') {
+      viewMode.value = 'list'
+    }
+    nextTick(() => itemListRef.value?.focusSearch())
+    return
+  }
+
+  // Cmd/Ctrl+N: new item for active module (or first module)
+  if (mod && e.key === 'n') {
+    e.preventDefault()
+    const activeId = collectionStore.activeModuleId
+    const mod2 = activeId
+      ? moduleStore.getModuleById(activeId)
+      : moduleStore.modules[0] ?? null
+    if (mod2) {
+      onModuleSelect(mod2)
+    } else {
+      toastStore.show('Create a collection schema first', 'info')
+    }
+    return
+  }
+}
+
 onMounted(async () => {
+  document.addEventListener('keydown', onGlobalKeydown)
+
   // Load saved theme settings
   try {
     const json = await LoadSettings()
@@ -102,7 +220,7 @@ function onEditFromDetail() {
   if (!viewingItem.value) return
   const schema = viewingSchema.value
   if (!schema) {
-    alert(`Collection type schema not available for "${viewingItem.value.moduleId}". The schema file may have been removed.`)
+    toastStore.show(`Schema not available for "${viewingItem.value.moduleId}". The schema file may have been removed.`, 'error')
     return
   }
   selectedSchema.value = schema
@@ -137,10 +255,16 @@ async function onSave(item: main.Item) {
       viewingItem.value = saved
       viewingSchema.value = moduleStore.getModuleById(saved.moduleId) ?? null
       showDetail.value = true
+      toastStore.show('Item saved', 'success')
     }
   } catch {
-    // Error is already set in collectionStore.error
+    toastStore.show(collectionStore.error ?? 'Failed to save item', 'error')
   }
+}
+
+function onDeleteFromDetail() {
+  if (!viewingItem.value) return
+  onDeleteItem(viewingItem.value)
 }
 
 function onCancel() {
@@ -168,19 +292,16 @@ function onSearch(query: string) {
 
 // Export backup state
 const exporting = ref(false)
-const exportMessage = ref<string | null>(null)
 
 async function onExportBackup() {
   exporting.value = true
-  exportMessage.value = null
   try {
     const path = await ExportBackup()
     if (path) {
-      exportMessage.value = `Backup saved: ${path.split('/').pop()}`
-      setTimeout(() => { exportMessage.value = null }, 5000)
+      toastStore.show(`Backup saved: ${path.split('/').pop()}`, 'success')
     }
   } catch (e: any) {
-    exportMessage.value = `Export failed: ${e?.message ?? e}`
+    toastStore.show(`Export failed: ${e?.message ?? e}`, 'error')
   } finally {
     exporting.value = false
   }
@@ -202,7 +323,7 @@ async function openEditSchemaBuilder(mod: main.ModuleSchema) {
     showBuilder.value = true
     showForm.value = false
   } catch (e: any) {
-    alert(`Failed to load schema: ${e?.message ?? e}`)
+    toastStore.show(`Failed to load schema: ${e?.message ?? e}`, 'error')
   }
 }
 
@@ -248,7 +369,6 @@ function onSettingsClose() {
         />
       </div>
       <div class="sidebar-bottom animate-fade-in delay-5">
-        <div v-if="exportMessage" class="export-message">{{ exportMessage }}</div>
         <button class="export-btn" :disabled="exporting" @click="onExportBackup">
           {{ exporting ? 'Exporting...' : 'Export Backup' }}
         </button>
@@ -305,6 +425,7 @@ function onSettingsClose() {
           :item="viewingItem"
           :schema="viewingSchema"
           @edit="onEditFromDetail"
+          @delete="onDeleteFromDetail"
           @close="onCloseDetail"
           @viewImage="onDetailViewImage"
         />
@@ -329,6 +450,7 @@ function onSettingsClose() {
           <ItemList
             v-if="viewMode === 'list'"
             key="list"
+            ref="itemListRef"
             :items="collectionStore.items"
             :modules="moduleStore.modules"
             :activeModuleId="collectionStore.activeModuleId"
@@ -336,6 +458,7 @@ function onSettingsClose() {
             @filterChange="onFilterChange"
             @search="onSearch"
             @addItem="onAddFirstItem"
+            @itemContextMenu="onItemContextMenu"
           />
 
           <CollectionGrid
@@ -346,6 +469,7 @@ function onSettingsClose() {
             @select="onItemSelect"
             @viewImage="onViewImage"
             @addItem="onAddFirstItem"
+            @itemContextMenu="onItemContextMenu"
           />
         </Transition>
       </template>
@@ -356,6 +480,16 @@ function onSettingsClose() {
         @close="lightboxVisible = false"
       />
     </main>
+
+    <ContextMenu
+      :visible="ctxVisible"
+      :x="ctxX"
+      :y="ctxY"
+      :options="ctxOptions"
+      @select="onCtxSelect"
+      @close="ctxVisible = false"
+    />
+    <ToastProvider />
   </div>
 </template>
 
@@ -456,12 +590,6 @@ body {
 .settings-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
-}
-.export-message {
-  font-size: 11px;
-  color: var(--success-text);
-  padding: 4px 0;
-  text-align: center;
 }
 .main-content {
   flex: 1;

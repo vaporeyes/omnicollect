@@ -1,6 +1,6 @@
 import {defineStore} from 'pinia'
 import {ref} from 'vue'
-import {GetItems, SaveItem} from '../../wailsjs/go/main/App'
+import {GetItems, SaveItem, DeleteItem} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
 
 export const useCollectionStore = defineStore('collection', () => {
@@ -34,6 +34,17 @@ export const useCollectionStore = defineStore('collection', () => {
     }
   }
 
+  async function deleteItem(id: string) {
+    error.value = null
+    try {
+      await DeleteItem(id)
+      await fetchItems()
+    } catch (e: any) {
+      error.value = e?.message ?? String(e)
+      throw e
+    }
+  }
+
   function setFilter(moduleId: string) {
     activeModuleId.value = moduleId
     fetchItems()
@@ -44,5 +55,5 @@ export const useCollectionStore = defineStore('collection', () => {
     fetchItems()
   }
 
-  return {items, loading, error, activeModuleId, searchQuery, fetchItems, saveItem, setFilter, setSearch}
+  return {items, loading, error, activeModuleId, searchQuery, fetchItems, saveItem, deleteItem, setFilter, setSearch}
 })

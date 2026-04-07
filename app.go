@@ -1,5 +1,5 @@
 // ABOUTME: App struct that serves as the Wails binding target.
-// ABOUTME: Exposes SaveItem, GetItems, and GetActiveModules to the frontend.
+// ABOUTME: Exposes SaveItem, DeleteItem, GetItems, and GetActiveModules to the frontend.
 package main
 
 import (
@@ -73,6 +73,14 @@ func (a *App) SaveItem(item Item) (Item, error) {
 // Pass empty strings to skip filtering.
 func (a *App) GetItems(query string, moduleID string) ([]Item, error) {
 	return queryItems(a.db, query, moduleID)
+}
+
+// DeleteItem removes a collection item by ID.
+func (a *App) DeleteItem(id string) error {
+	if id == "" {
+		return fmt.Errorf("item ID is required")
+	}
+	return deleteItem(a.db, id)
 }
 
 // GetActiveModules returns all module schemas loaded at startup.

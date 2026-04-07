@@ -61,6 +61,7 @@ go mod tidy      # Resolve dependencies
 | Method | Purpose |
 |--------|---------|
 | `SaveItem(item)` | Create or update a collection item |
+| `DeleteItem(id)` | Remove a collection item by ID |
 | `GetItems(query, moduleId)` | Fetch items with optional search/filter |
 | `GetActiveModules()` | Get all loaded module schemas |
 | `ProcessImage(path)` | Process image, generate thumbnail |
