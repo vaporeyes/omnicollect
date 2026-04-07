@@ -198,6 +198,18 @@ modules. Type keywords to surface quick actions: "new" (create item/schema),
 Right-click any item in list or grid view for a context menu with
 View, Edit, and Delete actions.
 
+## Multi-Select & Bulk Actions
+
+Click checkboxes in list view or selection badges in grid view to select
+multiple items. Shift-click to select a contiguous range. When items are
+selected, a floating action bar appears at the bottom with:
+
+- **Delete Selected**: Removes all selected items in one atomic operation
+- **Export CSV**: Generates a CSV file with all selected items' data
+- **Bulk Edit Module**: Reassigns selected items to a different collection type
+
+Selection persists across list/grid view switches and clears on navigation.
+
 ## Rich Text / Markdown
 
 Schema attributes with `widget: "textarea"` render a Markdown editor
@@ -252,3 +264,7 @@ transfer to another machine.
 8. **Markdown Textarea** (008): CodeMirror Markdown editor with
    formatting toolbar for textarea widgets, safe rendered HTML in detail
    views via marked + DOMPurify, global .prose typography class
+9. **Multi-Select & Bulk Actions** (009): Checkboxes in list view,
+   selection badges in grid view, Shift-click range select, floating
+   glassmorphism action bar, atomic batch delete, CSV export with save
+   dialog, bulk module reassignment

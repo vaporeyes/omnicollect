@@ -58,6 +58,30 @@ export namespace main {
 		    return a;
 		}
 	}
+	export class BulkDeleteResult {
+	    deleted: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BulkDeleteResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deleted = source["deleted"];
+	    }
+	}
+	export class BulkUpdateResult {
+	    updated: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new BulkUpdateResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.updated = source["updated"];
+	    }
+	}
 	
 	export class Item {
 	    id: string;

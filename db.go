@@ -328,6 +328,178 @@ func deleteItem(db *sql.DB, id string) error {
 	return nil
 }
 
+// deleteItems removes multiple items in a single atomic transaction.
+// Returns the number of items actually deleted.
+func deleteItems(db *sql.DB, ids []string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	result, err := tx.Exec(
+		"DELETE FROM items WHERE id IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("deleting items: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	deleted, _ := result.RowsAffected()
+	return deleted, nil
+}
+
+// bulkUpdateModule changes the module_id of multiple items in one transaction.
+// Returns the number of items updated.
+func bulkUpdateModule(db *sql.DB, ids []string, newModuleID string) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	placeholders := make([]string, len(ids))
+	args := []any{newModuleID, now}
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	result, err := tx.Exec(
+		"UPDATE items SET module_id = ?, updated_at = ? WHERE id IN ("+strings.Join(placeholders, ",")+")",
+		args...,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("updating items: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing transaction: %w", err)
+	}
+
+	updated, _ := result.RowsAffected()
+	return updated, nil
+}
+
+// exportItemsCSV queries items by ID and generates a CSV string.
+// Columns: id, title, module, purchasePrice, createdAt, updatedAt, then
+// all unique attribute keys sorted alphabetically.
+func exportItemsCSV(db *sql.DB, ids []string, modules []ModuleSchema) (string, error) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	rows, err := db.Query(
+		"SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
+		args...,
+	)
+	if err != nil {
+		return "", fmt.Errorf("querying items for CSV: %w", err)
+	}
+	defer rows.Close()
+
+	items, err := scanItems(rows)
+	if err != nil {
+		return "", err
+	}
+
+	// Build module name lookup
+	moduleNames := make(map[string]string)
+	for _, m := range modules {
+		moduleNames[m.ID] = m.DisplayName
+	}
+
+	// Collect all unique attribute keys
+	attrKeys := make(map[string]bool)
+	for _, item := range items {
+		for k := range item.Attributes {
+			attrKeys[k] = true
+		}
+	}
+	sortedKeys := make([]string, 0, len(attrKeys))
+	for k := range attrKeys {
+		sortedKeys = append(sortedKeys, k)
+	}
+	// Sort alphabetically
+	for i := 0; i < len(sortedKeys); i++ {
+		for j := i + 1; j < len(sortedKeys); j++ {
+			if sortedKeys[j] < sortedKeys[i] {
+				sortedKeys[i], sortedKeys[j] = sortedKeys[j], sortedKeys[i]
+			}
+		}
+	}
+
+	// Build CSV
+	var b strings.Builder
+
+	// Header
+	header := []string{"id", "title", "module", "purchasePrice", "createdAt", "updatedAt"}
+	header = append(header, sortedKeys...)
+	b.WriteString(csvRow(header))
+
+	// Data rows
+	for _, item := range items {
+		modName := moduleNames[item.ModuleID]
+		if modName == "" {
+			modName = item.ModuleID
+		}
+		price := ""
+		if item.PurchasePrice != nil {
+			price = fmt.Sprintf("%.2f", *item.PurchasePrice)
+		}
+		row := []string{item.ID, item.Title, modName, price, item.CreatedAt, item.UpdatedAt}
+		for _, k := range sortedKeys {
+			v := item.Attributes[k]
+			if v == nil {
+				row = append(row, "")
+			} else {
+				row = append(row, fmt.Sprintf("%v", v))
+			}
+		}
+		b.WriteString(csvRow(row))
+	}
+
+	return b.String(), nil
+}
+
+// csvRow formats a slice of strings as a single CSV row with proper escaping.
+func csvRow(fields []string) string {
+	escaped := make([]string, len(fields))
+	for i, f := range fields {
+		if strings.ContainsAny(f, ",\"\n\r") {
+			escaped[i] = "\"" + strings.ReplaceAll(f, "\"", "\"\"") + "\""
+		} else {
+			escaped[i] = f
+		}
+	}
+	return strings.Join(escaped, ",") + "\n"
+}
+
 // scanItems reads item rows from a query result set.
 func scanItems(rows *sql.Rows) ([]Item, error) {
 	var items []Item

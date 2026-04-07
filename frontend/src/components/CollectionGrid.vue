@@ -1,5 +1,8 @@
 <script lang="ts" setup>
 import {main} from '../../wailsjs/go/models'
+import {useSelectionStore} from '../stores/selectionStore'
+
+const selectionStore = useSelectionStore()
 
 const props = defineProps<{
   items: main.Item[]
@@ -27,6 +30,15 @@ function formatDate(dateStr: string): string {
   }
 }
 
+function onSelectClick(event: MouseEvent, item: main.Item, index: number) {
+  event.stopPropagation()
+  if (event.shiftKey) {
+    selectionStore.shiftSelect(index, props.items)
+  } else {
+    selectionStore.toggle(item.id, index)
+  }
+}
+
 function onImageError(event: Event) {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
@@ -51,12 +63,18 @@ function onImageError(event: Event) {
       <div
         v-for="(item, index) in items"
         :key="item.id"
-        class="grid-card animate-scale-up"
+        :class="['grid-card', 'animate-scale-up', {'card-selected': selectionStore.isSelected(item.id)}]"
         :style="{ animationDelay: `${index * 0.05}s` }"
         @click="emit('select', item)"
         @contextmenu.prevent="emit('itemContextMenu', item, $event.clientX, $event.clientY)"
       >
         <div class="card-image">
+          <div
+            :class="['select-badge', {active: selectionStore.isSelected(item.id)}]"
+            @click.stop="onSelectClick($event as MouseEvent, item, index)"
+          >
+            <svg v-if="selectionStore.isSelected(item.id)" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
           <img
             v-if="item.images && item.images.length > 0"
             :src="'/thumbnails/' + encodeURIComponent(item.images[0])"
@@ -106,6 +124,36 @@ function onImageError(event: Event) {
 .grid-card:hover {
   transform: scale(1.02);
   box-shadow: var(--shadow-md);
+}
+.card-selected {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: -2px;
+}
+.select-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.7);
+  background: rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.grid-card:hover .select-badge,
+.select-badge.active {
+  opacity: 1;
+}
+.select-badge.active {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
 }
 .card-image {
   position: relative;

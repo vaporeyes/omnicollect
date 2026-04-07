@@ -28,14 +28,16 @@ backup.go        # ZIP archive export (database + media + modules)
 modules.go       # Module schema loader, save, find helpers
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
 frontend/src/
-  stores/        # Pinia: moduleStore, collectionStore
+  stores/        # Pinia: moduleStore, collectionStore, selectionStore,
+                 #   toastStore
   components/    # DynamicForm, FormField, ItemList, CollectionGrid,
                  #   ModuleSelector, ImageAttach, ImageLightbox,
                  #   SchemaBuilder, SchemaVisualEditor,
                  #   SchemaCodeEditor, SchemaFormPreview,
                  #   ItemDetail, SettingsPage, ToastProvider,
                  #   ContextMenu, CommandPalette, FilterBar,
-                 #   MarkdownEditor, MarkdownRenderer
+                 #   MarkdownEditor, MarkdownRenderer,
+                 #   BulkActionBar
 ```
 
 ## Commands
@@ -75,6 +77,10 @@ go mod tidy      # Resolve dependencies
   and `MarkdownRenderer.vue` (marked + DOMPurify) in detail views.
   Global `.prose` class in `style.css` styles rendered Markdown.
   Dependencies: `@codemirror/lang-markdown`, `marked`, `dompurify`
+- Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
+  Shift-click range, select-all. `BulkActionBar.vue` floating bar with
+  bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
+  `ExportItemsCSV`, `BulkUpdateModule`
 
 ## Wails Bindings (App struct methods)
 
@@ -88,6 +94,9 @@ go mod tidy      # Resolve dependencies
 | `SelectImageFile()` | Open native file dialog for images |
 | `SaveCustomModule(json)` | Write module schema to disk, hot reload |
 | `LoadModuleFile(moduleId)` | Read module schema JSON for editing |
+| `DeleteItems(ids)` | Batch delete items in one transaction |
+| `ExportItemsCSV(ids)` | Generate CSV + save dialog for selected items |
+| `BulkUpdateModule(ids, newModuleID)` | Reassign items to different module |
 | `ExportBackup()` | Create ZIP archive of all data |
 
 ## Data Locations
@@ -105,6 +114,8 @@ go mod tidy      # Resolve dependencies
 - SQLite via modernc.org/sqlite (FTS5 full-text search, JSON attributes column) (007-faceted-filtering)
 - Go 1.25+ (backend, no changes needed), TypeScript + Vue 3 (frontend) + Wails v2, Pinia, vue-codemirror (existing), CodeMirror markdown extensions (new), marked (new), DOMPurify (new) (008-markdown-textarea)
 - SQLite (no changes -- raw Markdown stored as string in existing JSON attributes) (008-markdown-textarea)
+- Go 1.25+ (backend -- new bindings), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API (009-bulk-actions)
+- SQLite via modernc.org/sqlite (batch delete in transaction, CSV query) (009-bulk-actions)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

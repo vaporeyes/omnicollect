@@ -84,6 +84,78 @@ func (a *App) DeleteItem(id string) error {
 	return deleteItem(a.db, id)
 }
 
+// BulkDeleteResult holds the count of deleted items.
+type BulkDeleteResult struct {
+	Deleted int64 `json:"deleted"`
+}
+
+// BulkUpdateResult holds the count of updated items.
+type BulkUpdateResult struct {
+	Updated int64 `json:"updated"`
+}
+
+// DeleteItems removes multiple items in a single atomic transaction.
+func (a *App) DeleteItems(ids []string) (BulkDeleteResult, error) {
+	if len(ids) == 0 {
+		return BulkDeleteResult{}, fmt.Errorf("no item IDs provided")
+	}
+	deleted, err := deleteItems(a.db, ids)
+	if err != nil {
+		return BulkDeleteResult{}, err
+	}
+	return BulkDeleteResult{Deleted: deleted}, nil
+}
+
+// ExportItemsCSV generates a CSV file for the given item IDs.
+// Opens a save dialog for the user to pick the destination.
+// Returns the file path, or empty string if cancelled.
+func (a *App) ExportItemsCSV(ids []string) (string, error) {
+	if len(ids) == 0 {
+		return "", fmt.Errorf("no item IDs provided")
+	}
+
+	csv, err := exportItemsCSV(a.db, ids, a.modules)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("omnicollect-export-%d-items.csv", len(ids))
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Export Selected Items",
+		DefaultFilename: defaultName,
+		Filters: []runtime.FileFilter{
+			{DisplayName: "CSV Files", Pattern: "*.csv"},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("save dialog: %w", err)
+	}
+	if path == "" {
+		return "", nil
+	}
+
+	if err := os.WriteFile(path, []byte(csv), 0644); err != nil {
+		return "", fmt.Errorf("writing CSV: %w", err)
+	}
+
+	return path, nil
+}
+
+// BulkUpdateModule changes the module assignment of multiple items.
+func (a *App) BulkUpdateModule(ids []string, newModuleID string) (BulkUpdateResult, error) {
+	if len(ids) == 0 {
+		return BulkUpdateResult{}, fmt.Errorf("no item IDs provided")
+	}
+	if newModuleID == "" {
+		return BulkUpdateResult{}, fmt.Errorf("new module ID is required")
+	}
+	updated, err := bulkUpdateModule(a.db, ids, newModuleID)
+	if err != nil {
+		return BulkUpdateResult{}, err
+	}
+	return BulkUpdateResult{Updated: updated}, nil
+}
+
 // GetActiveModules returns all module schemas loaded at startup.
 func (a *App) GetActiveModules() ([]ModuleSchema, error) {
 	return a.modules, nil

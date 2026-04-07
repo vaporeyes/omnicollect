@@ -1,6 +1,9 @@
 <script lang="ts" setup>
 import {ref, computed} from 'vue'
 import {main} from '../../wailsjs/go/models'
+import {useSelectionStore} from '../stores/selectionStore'
+
+const selectionStore = useSelectionStore()
 
 const props = defineProps<{
   items: main.Item[]
@@ -119,6 +122,30 @@ function formatPrice(price: number | null | undefined): string {
   return price.toFixed(2)
 }
 
+const allSelected = computed(() =>
+  sortedItems.value.length > 0 && sortedItems.value.every(i => selectionStore.isSelected(i.id))
+)
+const someSelected = computed(() =>
+  sortedItems.value.some(i => selectionStore.isSelected(i.id)) && !allSelected.value
+)
+
+function onCheckboxClick(event: MouseEvent, item: main.Item, index: number) {
+  event.stopPropagation()
+  if (event.shiftKey) {
+    selectionStore.shiftSelect(index, sortedItems.value)
+  } else {
+    selectionStore.toggle(item.id, index)
+  }
+}
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectionStore.clear()
+  } else {
+    selectionStore.selectAll(sortedItems.value)
+  }
+}
+
 function sortIndicator(key: string): string {
   if (sortKey.value !== key) return ''
   return sortDir.value === 'asc' ? ' \u25B2' : ' \u25BC'
@@ -159,6 +186,15 @@ function sortIndicator(key: string): string {
       <table class="data-table">
         <thead>
           <tr>
+            <th class="col-check">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate="someSelected"
+                @change="toggleSelectAll"
+                @click.stop
+              />
+            </th>
             <th class="sortable" @click="toggleSort('title')">
               Title{{ sortIndicator('title') }}
             </th>
@@ -186,11 +222,18 @@ function sortIndicator(key: string): string {
           <tr
             v-for="(item, index) in sortedItems"
             :key="item.id"
-            class="data-row animate-fade-in"
+            :class="['data-row', 'animate-fade-in', {selected: selectionStore.isSelected(item.id)}]"
             :style="{ animationDelay: `${index * 0.03}s` }"
             @click="emit('select', item)"
             @contextmenu.prevent="emit('itemContextMenu', item, $event.clientX, $event.clientY)"
           >
+            <td class="col-check" @click.stop>
+              <input
+                type="checkbox"
+                :checked="selectionStore.isSelected(item.id)"
+                @click="onCheckboxClick($event as MouseEvent, item, index)"
+              />
+            </td>
             <td class="col-title">{{ item.title }}</td>
             <td v-if="!activeSchema">{{ moduleName(item.moduleId) }}</td>
             <td class="col-price">{{ formatPrice(item.purchasePrice) }}</td>
@@ -272,6 +315,19 @@ function sortIndicator(key: string): string {
 }
 .data-row:hover {
   background: var(--bg-hover);
+}
+.col-check {
+  width: 32px;
+  text-align: center;
+  padding: 0 6px !important;
+}
+.col-check input[type="checkbox"] {
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+}
+.data-row.selected {
+  background: var(--accent-blue-light, rgba(59,130,246,0.08));
 }
 .col-title {
   font-weight: 500;

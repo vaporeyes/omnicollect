@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
 import {main} from '../wailsjs/go/models'
-import {LoadModuleFile, ExportBackup, LoadSettings} from '../wailsjs/go/main/App'
+import {LoadModuleFile, ExportBackup, LoadSettings, DeleteItems, ExportItemsCSV, BulkUpdateModule} from '../wailsjs/go/main/App'
 import {WindowSetSystemDefaultTheme} from '../wailsjs/runtime/runtime'
 import {applyPolineTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
@@ -20,10 +20,18 @@ import CommandPalette from './components/CommandPalette.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import type {MenuOption} from './components/ContextMenu.vue'
 import {useToastStore} from './stores/toastStore'
+import {useSelectionStore} from './stores/selectionStore'
+import BulkActionBar from './components/BulkActionBar.vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
 const toastStore = useToastStore()
+const selectionStore = useSelectionStore()
+
+// Bulk action state
+const showBulkDeleteConfirm = ref(false)
+const showBulkModuleDialog = ref(false)
+const bulkTargetModuleId = ref('')
 
 // Theme configuration, loaded from settings on mount
 const themeConfig = ref<ThemeConfig>(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
@@ -219,6 +227,7 @@ onMounted(async () => {
 })
 
 function onModuleSelect(mod: main.ModuleSchema) {
+  selectionStore.clear()
   selectedSchema.value = mod
   editingItem.value = null
   viewingItem.value = null
@@ -228,6 +237,7 @@ function onModuleSelect(mod: main.ModuleSchema) {
 }
 
 function onItemSelect(item: main.Item) {
+  selectionStore.clear()
   const schema = moduleStore.getModuleById(item.moduleId)
   viewingItem.value = item
   viewingSchema.value = schema ?? null
@@ -303,6 +313,7 @@ function onAddFirstItem() {
 }
 
 function onFilterChange(moduleId: string) {
+  selectionStore.clear()
   collectionStore.setFilter(moduleId)
 }
 
@@ -332,6 +343,48 @@ function onPaletteAction(action: string) {
   } else if (action === 'exportBackup') {
     onExportBackup()
   }
+}
+
+// Bulk action handlers
+async function onBulkDelete() {
+  const ids = selectionStore.selectedIdArray()
+  const count = ids.length
+  try {
+    const result = await DeleteItems(ids)
+    selectionStore.clear()
+    await collectionStore.fetchItems()
+    toastStore.show(`${result.deleted} item${result.deleted === 1 ? '' : 's'} deleted`, 'success')
+  } catch (e: any) {
+    toastStore.show(`Bulk delete failed: ${e?.message ?? e}`, 'error')
+  }
+  showBulkDeleteConfirm.value = false
+}
+
+async function onBulkExportCSV() {
+  const ids = selectionStore.selectedIdArray()
+  try {
+    const path = await ExportItemsCSV(ids)
+    if (path) {
+      toastStore.show(`Exported ${ids.length} items to ${path.split('/').pop()}`, 'success')
+    }
+  } catch (e: any) {
+    toastStore.show(`CSV export failed: ${e?.message ?? e}`, 'error')
+  }
+}
+
+async function onBulkUpdateModule() {
+  if (!bulkTargetModuleId.value) return
+  const ids = selectionStore.selectedIdArray()
+  try {
+    const result = await BulkUpdateModule(ids, bulkTargetModuleId.value)
+    selectionStore.clear()
+    await collectionStore.fetchItems()
+    toastStore.show(`${result.updated} item${result.updated === 1 ? '' : 's'} moved`, 'success')
+  } catch (e: any) {
+    toastStore.show(`Module update failed: ${e?.message ?? e}`, 'error')
+  }
+  showBulkModuleDialog.value = false
+  bulkTargetModuleId.value = ''
 }
 
 // Export backup state
@@ -381,6 +434,7 @@ function onBuilderClose() {
 }
 
 function openSettings() {
+  selectionStore.clear()
   showSettings.value = true
   showForm.value = false
   showDetail.value = false
@@ -536,6 +590,45 @@ function onSettingsClose() {
         @close="lightboxVisible = false"
       />
     </main>
+
+    <BulkActionBar
+      :count="selectionStore.count"
+      @delete="showBulkDeleteConfirm = true"
+      @export="onBulkExportCSV"
+      @editModule="showBulkModuleDialog = true; bulkTargetModuleId = ''"
+      @deselectAll="selectionStore.clear()"
+    />
+
+    <!-- Bulk delete confirmation -->
+    <Teleport to="body">
+      <div v-if="showBulkDeleteConfirm" class="confirm-overlay" @click.self="showBulkDeleteConfirm = false">
+        <div class="confirm-dialog">
+          <p class="confirm-title">Delete {{ selectionStore.count }} item{{ selectionStore.count === 1 ? '' : 's' }}?</p>
+          <p class="confirm-message">This action cannot be undone.</p>
+          <div class="confirm-actions">
+            <button class="confirm-cancel-btn" @click="showBulkDeleteConfirm = false">Cancel</button>
+            <button class="confirm-delete-btn" @click="onBulkDelete">Delete</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Bulk module edit dialog -->
+    <Teleport to="body">
+      <div v-if="showBulkModuleDialog" class="confirm-overlay" @click.self="showBulkModuleDialog = false">
+        <div class="confirm-dialog">
+          <p class="confirm-title">Move {{ selectionStore.count }} item{{ selectionStore.count === 1 ? '' : 's' }} to:</p>
+          <select v-model="bulkTargetModuleId" class="bulk-module-select">
+            <option value="" disabled>Select module...</option>
+            <option v-for="mod in moduleStore.modules" :key="mod.id" :value="mod.id">{{ mod.displayName }}</option>
+          </select>
+          <div class="confirm-actions">
+            <button class="confirm-cancel-btn" @click="showBulkModuleDialog = false">Cancel</button>
+            <button class="confirm-delete-btn" :disabled="!bulkTargetModuleId" @click="onBulkUpdateModule" style="background: var(--accent-blue)">Move</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
 
     <CommandPalette
       :visible="showPalette"
@@ -705,6 +798,82 @@ body {
   background: var(--accent-blue);
   color: var(--text-on-accent);
   box-shadow: var(--shadow-sm);
+}
+
+/* Bulk action dialogs */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+}
+.confirm-dialog {
+  background: var(--bg-primary, #1e1e2e);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: var(--radius-md);
+  padding: 28px;
+  max-width: 360px;
+  width: 90%;
+  box-shadow: var(--shadow-lg);
+}
+.confirm-title {
+  margin: 0 0 4px;
+  font-family: 'Instrument Serif', serif;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+.confirm-message {
+  margin: 0 0 20px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-cancel-btn {
+  padding: 8px 18px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+.confirm-cancel-btn:hover {
+  background: var(--bg-hover);
+}
+.confirm-delete-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--error-border, #dc2626);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.confirm-delete-btn:hover {
+  background: #b91c1c;
+}
+.confirm-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.bulk-module-select {
+  width: 100%;
+  padding: 8px;
+  margin: 12px 0 20px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 .filtered-empty {
