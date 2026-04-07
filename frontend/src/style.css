@@ -238,6 +238,84 @@ input:disabled, select:disabled, textarea:disabled {
 .delay-5 { animation-delay: 0.25s; }
 .delay-6 { animation-delay: 0.3s; }
 
+/* Prose: typography for rendered Markdown content */
+.prose {
+  font-family: 'Outfit', sans-serif;
+  font-size: 14px;
+  line-height: var(--leading-normal);
+  color: var(--text-primary);
+}
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: 'Instrument Serif', serif;
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tight);
+  margin: 1.2em 0 0.4em;
+  color: var(--text-primary);
+}
+.prose h1 { font-size: 24px; }
+.prose h2 { font-size: 20px; }
+.prose h3 { font-size: 17px; }
+.prose h4 { font-size: 15px; }
+.prose p {
+  margin: 0 0 0.75em;
+}
+.prose ul, .prose ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+}
+.prose li {
+  margin-bottom: 0.25em;
+}
+.prose blockquote {
+  margin: 0 0 0.75em;
+  padding: 0.5em 1em;
+  border-left: 3px solid var(--accent-blue);
+  color: var(--text-secondary);
+  font-style: italic;
+  background: var(--bg-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.prose code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--bg-secondary);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+}
+.prose pre {
+  margin: 0 0 0.75em;
+  padding: 0.75em 1em;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+.prose a {
+  color: var(--accent-blue);
+  text-decoration: none;
+}
+.prose a:hover {
+  text-decoration: underline;
+}
+.prose strong {
+  font-weight: 600;
+}
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border-primary);
+  margin: 1em 0;
+}
+.prose > *:first-child {
+  margin-top: 0;
+}
+.prose > *:last-child {
+  margin-bottom: 0;
+}
+
 /* fade-slide: content panels slide up slightly and fade in */
 .fade-slide-enter-active {
   transition: opacity var(--transition-normal), transform var(--transition-normal);

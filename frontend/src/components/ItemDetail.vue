@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {ref, computed} from 'vue'
 import {main} from '../../wailsjs/go/models'
+import MarkdownRenderer from './MarkdownRenderer.vue'
 
 const props = defineProps<{
   item: main.Item
@@ -54,6 +55,10 @@ function formatAttrValue(value: any, type: string): string {
   if (type === 'boolean') return value ? 'Yes' : 'No'
   if (type === 'date') return formatDate(String(value))
   return String(value)
+}
+
+function isTextarea(attr: main.AttributeSchema): boolean {
+  return attr.display?.widget === 'textarea'
 }
 
 function prevImage() {
@@ -173,12 +178,19 @@ function nextImage() {
         <!-- Custom attributes from schema -->
         <div v-if="schema && schema.attributes.length > 0" class="info-section">
           <h3 class="section-heading">Attributes</h3>
-          <dl class="info-grid">
-            <div v-for="attr in schema.attributes" :key="attr.name" class="info-row">
-              <dt>{{ attr.display?.label || attr.name }}</dt>
-              <dd>{{ formatAttrValue(item.attributes?.[attr.name], attr.type) || '--' }}</dd>
+          <!-- Textarea attributes render as Markdown -->
+          <div v-for="attr in schema.attributes" :key="attr.name">
+            <div v-if="isTextarea(attr) && item.attributes?.[attr.name]" class="attr-markdown">
+              <div class="facet-label-sm">{{ attr.display?.label || attr.name }}</div>
+              <MarkdownRenderer :content="String(item.attributes[attr.name])" />
             </div>
-          </dl>
+            <dl v-else class="info-grid">
+              <div class="info-row">
+                <dt>{{ attr.display?.label || attr.name }}</dt>
+                <dd>{{ formatAttrValue(item.attributes?.[attr.name], attr.type) || '--' }}</dd>
+              </div>
+            </dl>
+          </div>
         </div>
 
         <!-- Raw attributes when no schema available -->
@@ -491,6 +503,20 @@ function nextImage() {
   font-weight: 500;
   color: var(--text-primary);
   text-align: right;
+}
+
+/* Markdown attribute blocks */
+.attr-markdown {
+  margin-bottom: var(--space-sm);
+}
+.facet-label-sm {
+  font-family: 'Outfit', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
 
 /* --- Confirmation dialog --- */

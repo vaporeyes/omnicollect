@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {computed} from 'vue'
 import {main} from '../../wailsjs/go/models'
+import MarkdownEditor from './MarkdownEditor.vue'
 
 const props = defineProps<{
   attribute: main.AttributeSchema
@@ -50,12 +51,10 @@ function onInput(event: Event) {
       <span v-if="attribute.required" class="required">*</span>
     </label>
 
-    <textarea
+    <MarkdownEditor
       v-if="inputType === 'textarea'"
-      :value="modelValue ?? ''"
-      :placeholder="placeholder"
-      @input="onInput"
-      class="field-input"
+      :modelValue="modelValue ?? ''"
+      @update:modelValue="val => emit('update:modelValue', val)"
     />
 
     <select

@@ -34,7 +34,8 @@ frontend/src/
                  #   SchemaBuilder, SchemaVisualEditor,
                  #   SchemaCodeEditor, SchemaFormPreview,
                  #   ItemDetail, SettingsPage, ToastProvider,
-                 #   ContextMenu, CommandPalette, FilterBar
+                 #   ContextMenu, CommandPalette, FilterBar,
+                 #   MarkdownEditor, MarkdownRenderer
 ```
 
 ## Commands
@@ -69,6 +70,11 @@ go mod tidy      # Resolve dependencies
 - `GetItems(query, moduleID, filtersJSON)` accepts JSON filter payload;
   backend uses `json_extract()` for attribute filters, direct column for
   `purchasePrice`; `collectionStore.activeFilters` manages filter state
+- Markdown support: `widget: "textarea"` schema attributes use
+  `MarkdownEditor.vue` (CodeMirror + `@codemirror/lang-markdown`) in forms
+  and `MarkdownRenderer.vue` (marked + DOMPurify) in detail views.
+  Global `.prose` class in `style.css` styles rendered Markdown.
+  Dependencies: `@codemirror/lang-markdown`, `marked`, `dompurify`
 
 ## Wails Bindings (App struct methods)
 
@@ -97,6 +103,8 @@ go mod tidy      # Resolve dependencies
 - Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API (006-command-palette)
 - SQLite via modernc.org/sqlite (existing FTS5 full-text search) (006-command-palette)
 - SQLite via modernc.org/sqlite (FTS5 full-text search, JSON attributes column) (007-faceted-filtering)
+- Go 1.25+ (backend, no changes needed), TypeScript + Vue 3 (frontend) + Wails v2, Pinia, vue-codemirror (existing), CodeMirror markdown extensions (new), marked (new), DOMPurify (new) (008-markdown-textarea)
+- SQLite (no changes -- raw Markdown stored as string in existing JSON attributes) (008-markdown-textarea)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

@@ -103,7 +103,7 @@ The new collection type appears in the sidebar.
 Each attribute can include a `display` object:
 - `label`: Override the display name
 - `placeholder`: Input placeholder text
-- `widget`: Force a specific control (e.g., `"textarea"` for strings)
+- `widget`: Force a specific control (e.g., `"textarea"` for Markdown editor)
 - `group`: Group attributes into form sections
 - `order`: Sort priority within a group
 
@@ -198,6 +198,14 @@ modules. Type keywords to surface quick actions: "new" (create item/schema),
 Right-click any item in list or grid view for a context menu with
 View, Edit, and Delete actions.
 
+## Rich Text / Markdown
+
+Schema attributes with `widget: "textarea"` render a Markdown editor
+with a formatting toolbar (bold, italic, heading, lists, links). Content
+is stored as raw Markdown in the database and rendered as formatted HTML
+in the item detail view. All rendered HTML is sanitized to prevent
+script injection.
+
 ## Faceted Filtering
 
 When a specific collection type is selected, a collapsible **Filter Bar**
@@ -241,3 +249,6 @@ transfer to another machine.
 7. **Faceted Filtering** (007): Schema-driven filter bar with enum
    multi-select pills, boolean tri-state toggles, number range inputs,
    purchasePrice filtering, collapsible UI, backend json_extract queries
+8. **Markdown Textarea** (008): CodeMirror Markdown editor with
+   formatting toolbar for textarea widgets, safe rendered HTML in detail
+   views via marked + DOMPurify, global .prose typography class
