@@ -69,10 +69,11 @@ func (a *App) SaveItem(item Item) (Item, error) {
 	return updateItem(a.db, item)
 }
 
-// GetItems retrieves items with optional full-text search and module filter.
-// Pass empty strings to skip filtering.
-func (a *App) GetItems(query string, moduleID string) ([]Item, error) {
-	return queryItems(a.db, query, moduleID)
+// GetItems retrieves items with optional full-text search, module filter,
+// and attribute filters. Pass empty strings to skip any filter dimension.
+// filtersJSON is a JSON array of {field, op, value/values} objects.
+func (a *App) GetItems(query string, moduleID string, filtersJSON string) ([]Item, error) {
+	return queryItems(a.db, query, moduleID, filtersJSON)
 }
 
 // DeleteItem removes a collection item by ID.

@@ -186,10 +186,77 @@ func updateItem(db *sql.DB, item Item) (Item, error) {
 	return item, nil
 }
 
-// queryItems retrieves items with optional FTS search and module filter.
-func queryItems(db *sql.DB, query string, moduleID string) ([]Item, error) {
+// attrFilter represents a single attribute filter from the frontend.
+type attrFilter struct {
+	Field  string   `json:"field"`
+	Op     string   `json:"op"`
+	Value  any      `json:"value,omitempty"`
+	Values []string `json:"values,omitempty"`
+}
+
+// parseFilters parses a JSON array of attribute filters. Returns nil for empty input.
+func parseFilters(filtersJSON string) ([]attrFilter, error) {
+	if filtersJSON == "" {
+		return nil, nil
+	}
+	var filters []attrFilter
+	if err := json.Unmarshal([]byte(filtersJSON), &filters); err != nil {
+		return nil, fmt.Errorf("parsing filters: %w", err)
+	}
+	return filters, nil
+}
+
+// buildFilterClauses generates WHERE clause fragments and args from attribute filters.
+// Uses json_extract for attributes; direct column access for purchasePrice.
+func buildFilterClauses(filters []attrFilter, tableAlias string) ([]string, []any) {
+	var clauses []string
+	var args []any
+	col := func(field string) string {
+		prefix := ""
+		if tableAlias != "" {
+			prefix = tableAlias + "."
+		}
+		if field == "purchasePrice" {
+			return prefix + "purchase_price"
+		}
+		return fmt.Sprintf("json_extract(%sattributes, '$.%s')", prefix, field)
+	}
+
+	for _, f := range filters {
+		expr := col(f.Field)
+		switch f.Op {
+		case "in":
+			if len(f.Values) == 0 {
+				continue
+			}
+			placeholders := make([]string, len(f.Values))
+			for i, v := range f.Values {
+				placeholders[i] = "?"
+				args = append(args, v)
+			}
+			clauses = append(clauses, fmt.Sprintf("(%s IS NOT NULL AND %s IN (%s))", expr, expr, strings.Join(placeholders, ",")))
+		case "eq":
+			clauses = append(clauses, fmt.Sprintf("(%s IS NOT NULL AND %s = ?)", expr, expr))
+			args = append(args, f.Value)
+		case "gte":
+			clauses = append(clauses, fmt.Sprintf("(%s IS NOT NULL AND %s >= ?)", expr, expr))
+			args = append(args, f.Value)
+		case "lte":
+			clauses = append(clauses, fmt.Sprintf("(%s IS NOT NULL AND %s <= ?)", expr, expr))
+			args = append(args, f.Value)
+		}
+	}
+	return clauses, args
+}
+
+// queryItems retrieves items with optional FTS search, module filter, and attribute filters.
+func queryItems(db *sql.DB, query string, moduleID string, filtersJSON string) ([]Item, error) {
+	filters, err := parseFilters(filtersJSON)
+	if err != nil {
+		return nil, err
+	}
+
 	var rows *sql.Rows
-	var err error
 
 	if query != "" {
 		// Sanitize for FTS5: wrap in quotes, escape internal quotes, append wildcard
@@ -202,19 +269,42 @@ func queryItems(db *sql.DB, query string, moduleID string) ([]Item, error) {
 			FROM items i
 			JOIN items_fts ON items_fts.rowid = i.rowid
 			WHERE items_fts MATCH ?`
+		queryArgs := []any{safeQuery}
+
 		if moduleID != "" {
-			rows, err = db.Query(baseSQL+" AND i.module_id = ? ORDER BY rank", safeQuery, moduleID)
-		} else {
-			rows, err = db.Query(baseSQL+" ORDER BY rank", safeQuery)
+			baseSQL += " AND i.module_id = ?"
+			queryArgs = append(queryArgs, moduleID)
 		}
-	} else if moduleID != "" {
-		rows, err = db.Query(
-			`SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at
-			 FROM items WHERE module_id = ? ORDER BY updated_at DESC`, moduleID)
+
+		filterClauses, filterArgs := buildFilterClauses(filters, "i")
+		for _, c := range filterClauses {
+			baseSQL += " AND " + c
+		}
+		queryArgs = append(queryArgs, filterArgs...)
+		baseSQL += " ORDER BY rank"
+
+		rows, err = db.Query(baseSQL, queryArgs...)
 	} else {
-		rows, err = db.Query(
-			`SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at
-			 FROM items ORDER BY updated_at DESC`)
+		baseSQL := `SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at
+			FROM items`
+		var queryArgs []any
+		var whereParts []string
+
+		if moduleID != "" {
+			whereParts = append(whereParts, "module_id = ?")
+			queryArgs = append(queryArgs, moduleID)
+		}
+
+		filterClauses, filterArgs := buildFilterClauses(filters, "")
+		whereParts = append(whereParts, filterClauses...)
+		queryArgs = append(queryArgs, filterArgs...)
+
+		if len(whereParts) > 0 {
+			baseSQL += " WHERE " + strings.Join(whereParts, " AND ")
+		}
+		baseSQL += " ORDER BY updated_at DESC"
+
+		rows, err = db.Query(baseSQL, queryArgs...)
 	}
 
 	if err != nil {

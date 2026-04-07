@@ -34,7 +34,7 @@ frontend/src/
                  #   SchemaBuilder, SchemaVisualEditor,
                  #   SchemaCodeEditor, SchemaFormPreview,
                  #   ItemDetail, SettingsPage, ToastProvider,
-                 #   ContextMenu, CommandPalette
+                 #   ContextMenu, CommandPalette, FilterBar
 ```
 
 ## Commands
@@ -63,6 +63,12 @@ go mod tidy      # Resolve dependencies
   `collectionStore.searchAllItems()`, quick actions via keyword matching
 - Toast notifications via `useToastStore` (replace all alert() calls)
 - Context menus on items in list/grid views via `ContextMenu.vue`
+- Faceted filtering via `FilterBar.vue`: collapsible bar generated from
+  active module schema; enum pills (multi-select OR), boolean tri-state
+  toggles (off/true/false), inline number range min/max inputs
+- `GetItems(query, moduleID, filtersJSON)` accepts JSON filter payload;
+  backend uses `json_extract()` for attribute filters, direct column for
+  `purchasePrice`; `collectionStore.activeFilters` manages filter state
 
 ## Wails Bindings (App struct methods)
 
@@ -70,7 +76,7 @@ go mod tidy      # Resolve dependencies
 |--------|---------|
 | `SaveItem(item)` | Create or update a collection item |
 | `DeleteItem(id)` | Remove a collection item by ID |
-| `GetItems(query, moduleId)` | Fetch items with optional search/filter |
+| `GetItems(query, moduleId, filtersJSON)` | Fetch items with search, module, and attribute filters |
 | `GetActiveModules()` | Get all loaded module schemas |
 | `ProcessImage(path)` | Process image, generate thumbnail |
 | `SelectImageFile()` | Open native file dialog for images |
@@ -90,6 +96,7 @@ go mod tidy      # Resolve dependencies
 ## Active Technologies
 - Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API (006-command-palette)
 - SQLite via modernc.org/sqlite (existing FTS5 full-text search) (006-command-palette)
+- SQLite via modernc.org/sqlite (FTS5 full-text search, JSON attributes column) (007-faceted-filtering)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

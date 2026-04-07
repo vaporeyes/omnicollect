@@ -3,18 +3,34 @@ import {ref} from 'vue'
 import {GetItems, SaveItem, DeleteItem} from '../../wailsjs/go/main/App'
 import {main} from '../../wailsjs/go/models'
 
+export interface AttributeFilter {
+  field: string
+  op: 'in' | 'eq' | 'gte' | 'lte'
+  value?: any
+  values?: string[]
+}
+
 export const useCollectionStore = defineStore('collection', () => {
   const items = ref<main.Item[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   const activeModuleId = ref('')
   const searchQuery = ref('')
+  const activeFilters = ref<Record<string, AttributeFilter[]>>({})
+
+  function serializeFilters(): string {
+    const all: AttributeFilter[] = []
+    for (const filters of Object.values(activeFilters.value)) {
+      all.push(...filters)
+    }
+    return all.length > 0 ? JSON.stringify(all) : ''
+  }
 
   async function fetchItems() {
     loading.value = true
     error.value = null
     try {
-      items.value = await GetItems(searchQuery.value, activeModuleId.value)
+      items.value = await GetItems(searchQuery.value, activeModuleId.value, serializeFilters())
     } catch (e: any) {
       error.value = e?.message ?? String(e)
     } finally {
@@ -47,11 +63,12 @@ export const useCollectionStore = defineStore('collection', () => {
 
   async function searchAllItems(query: string): Promise<main.Item[]> {
     if (!query) return []
-    return await GetItems(query, '')
+    return await GetItems(query, '', '')
   }
 
   function setFilter(moduleId: string) {
     activeModuleId.value = moduleId
+    activeFilters.value = {}
     fetchItems()
   }
 
@@ -60,5 +77,19 @@ export const useCollectionStore = defineStore('collection', () => {
     fetchItems()
   }
 
-  return {items, loading, error, activeModuleId, searchQuery, fetchItems, saveItem, deleteItem, searchAllItems, setFilter, setSearch}
+  function setActiveFilters(filters: Record<string, AttributeFilter[]>) {
+    activeFilters.value = filters
+    fetchItems()
+  }
+
+  function clearFilters() {
+    activeFilters.value = {}
+    fetchItems()
+  }
+
+  return {
+    items, loading, error, activeModuleId, searchQuery, activeFilters,
+    fetchItems, saveItem, deleteItem, searchAllItems,
+    setFilter, setSearch, setActiveFilters, clearFilters,
+  }
 })

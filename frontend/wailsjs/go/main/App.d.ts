@@ -8,7 +8,7 @@ export function ExportBackup():Promise<string>;
 
 export function GetActiveModules():Promise<Array<main.ModuleSchema>>;
 
-export function GetItems(arg1:string,arg2:string):Promise<Array<main.Item>>;
+export function GetItems(arg1:string,arg2:string,arg3:string):Promise<Array<main.Item>>;
 
 export function LoadModuleFile(arg1:string):Promise<string>;
 

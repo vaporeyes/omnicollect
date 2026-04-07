@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {ref, nextTick, onMounted, onUnmounted} from 'vue'
+import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
 import {main} from '../wailsjs/go/models'
 import {LoadModuleFile, ExportBackup, LoadSettings} from '../wailsjs/go/main/App'
 import {WindowSetSystemDefaultTheme} from '../wailsjs/runtime/runtime'
@@ -15,6 +15,7 @@ import SchemaBuilder from './components/SchemaBuilder.vue'
 import ItemDetail from './components/ItemDetail.vue'
 import SettingsPage from './components/SettingsPage.vue'
 import ToastProvider from './components/ToastProvider.vue'
+import FilterBar from './components/FilterBar.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import type {MenuOption} from './components/ContextMenu.vue'
@@ -62,6 +63,13 @@ const viewingSchema = ref<main.ModuleSchema | null>(null)
 const showForm = ref(false)
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
+
+// Active schema for filter bar (null when "All Types" is selected)
+const activeFilterSchema = computed(() => {
+  const id = collectionStore.activeModuleId
+  if (!id) return null
+  return moduleStore.getModuleById(id) ?? null
+})
 
 // Template ref for search focus
 const itemListRef = ref<InstanceType<typeof ItemList> | null>(null)
@@ -482,6 +490,18 @@ function onSettingsClose() {
           >Grid</button>
         </div>
 
+        <FilterBar
+          :schema="activeFilterSchema"
+          :filters="collectionStore.activeFilters"
+          @update="collectionStore.setActiveFilters"
+          @clear="collectionStore.clearFilters"
+        />
+
+        <div v-if="collectionStore.items.length === 0 && Object.keys(collectionStore.activeFilters).length > 0" class="filtered-empty">
+          No items match the active filters.
+          <button class="filtered-empty-clear" @click="collectionStore.clearFilters">Clear filters</button>
+        </div>
+
         <Transition name="fade-slide" mode="out-in">
           <ItemList
             v-if="viewMode === 'list'"
@@ -685,6 +705,24 @@ body {
   background: var(--accent-blue);
   color: var(--text-on-accent);
   box-shadow: var(--shadow-sm);
+}
+
+.filtered-empty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.filtered-empty-clear {
+  display: inline;
+  background: none;
+  border: none;
+  color: var(--accent-blue);
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: underline;
+  padding: 0;
+  margin-left: 4px;
 }
 
 /* fade-slide: content panels slide up slightly and fade in */

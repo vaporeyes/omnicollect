@@ -198,6 +198,20 @@ modules. Type keywords to surface quick actions: "new" (create item/schema),
 Right-click any item in list or grid view for a context menu with
 View, Edit, and Delete actions.
 
+## Faceted Filtering
+
+When a specific collection type is selected, a collapsible **Filter Bar**
+appears above the item list/grid. It dynamically generates filter controls
+from the module's JSON schema:
+
+- **Enum attributes**: Multi-select pills (OR logic within the same field)
+- **Boolean attributes**: Tri-state toggle (off -> Yes -> No -> off)
+- **Number attributes**: Inline min/max range inputs (400ms debounce)
+- **Purchase Price**: Always available as a number range filter
+
+Filters combine with AND logic across attributes and with text search.
+A "Clear all" button removes all active filters at once.
+
 ## Backup & Export
 
 Click "Export Backup" in the sidebar to create a complete ZIP archive
@@ -224,3 +238,6 @@ transfer to another machine.
    shortcuts (Cmd+F/N/Esc), right-click context menus, toast
    notifications, item delete with confirmation, premium split-layout
    item detail view with Instrument Serif/Outfit typography
+7. **Faceted Filtering** (007): Schema-driven filter bar with enum
+   multi-select pills, boolean tri-state toggles, number range inputs,
+   purchasePrice filtering, collapsible UI, backend json_extract queries
