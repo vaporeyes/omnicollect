@@ -46,6 +46,20 @@ func NewSQLiteStore() (*SQLiteStore, error) {
 	return &SQLiteStore{db: db}, nil
 }
 
+// NewSQLiteStoreInMemory creates an in-memory SQLite store for testing.
+// The database is lost when the connection is closed.
+func NewSQLiteStoreInMemory() (*SQLiteStore, error) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		return nil, fmt.Errorf("opening in-memory database: %w", err)
+	}
+	if err := createSQLiteSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating schema: %w", err)
+	}
+	return &SQLiteStore{db: db}, nil
+}
+
 // DB returns the underlying *sql.DB for backup and other raw operations.
 func (s *SQLiteStore) DB() *sql.DB {
 	return s.db
@@ -89,17 +103,10 @@ func createSQLiteSchema(db *sql.DB) error {
 				 WHERE type IN ('text','integer','real'))
 			);
 		END`,
-		// Trigger: remove old FTS entry and insert new one after item update
+		// Trigger: remove old FTS entry and insert new one after item update.
+		// Uses DELETE FROM (not the 'delete' command) for contentless_delete=1 tables.
 		`CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
-			INSERT INTO items_fts(items_fts, rowid, title, attrs_text)
-			VALUES (
-				'delete',
-				old.rowid,
-				old.title,
-				(SELECT group_concat(value, ' ')
-				 FROM json_each(old.attributes)
-				 WHERE type IN ('text','integer','real'))
-			);
+			DELETE FROM items_fts WHERE rowid = old.rowid;
 			INSERT INTO items_fts(rowid, title, attrs_text)
 			VALUES (
 				new.rowid,
@@ -109,17 +116,10 @@ func createSQLiteSchema(db *sql.DB) error {
 				 WHERE type IN ('text','integer','real'))
 			);
 		END`,
-		// Trigger: remove FTS entry after item delete
+		// Trigger: remove FTS entry after item delete.
+		// Uses DELETE FROM (not the 'delete' command) for contentless_delete=1 tables.
 		`CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
-			INSERT INTO items_fts(items_fts, rowid, title, attrs_text)
-			VALUES (
-				'delete',
-				old.rowid,
-				old.title,
-				(SELECT group_concat(value, ' ')
-				 FROM json_each(old.attributes)
-				 WHERE type IN ('text','integer','real'))
-			);
+			DELETE FROM items_fts WHERE rowid = old.rowid;
 		END`,
 	}
 

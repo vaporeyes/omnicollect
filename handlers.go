@@ -169,13 +169,6 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 // Export
 
 func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
-	// Backup only works with SQLiteStore (local mode)
-	sqliteStore, ok := s.app.store.(*storage.SQLiteStore)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "backup export is only available in local mode")
-		return
-	}
-
 	tmp, err := os.CreateTemp("", "omnicollect-backup-*.zip")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "creating temp file: "+err.Error())
@@ -185,9 +178,17 @@ func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
-	if err := createBackupArchive(tmpPath, sqliteStore.DB()); err != nil {
-		writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
-		return
+	// Use SQLite-native backup if available, otherwise export via Store
+	if sqliteStore, ok := s.app.store.(*storage.SQLiteStore); ok {
+		if err := createBackupArchive(tmpPath, sqliteStore.DB()); err != nil {
+			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
+			return
+		}
+	} else {
+		if err := createCloudBackup(tmpPath, s.app.store); err != nil {
+			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
+			return
+		}
 	}
 
 	filename := fmt.Sprintf("omnicollect-backup-%s.zip", time.Now().UTC().Format("20060102-150405"))

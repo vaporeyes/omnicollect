@@ -33,6 +33,12 @@ func NewLocalMediaStore() (*LocalMediaStore, error) {
 	return &LocalMediaStore{baseDir: baseDir}, nil
 }
 
+// NewLocalMediaStoreAt creates a LocalMediaStore at a specific base directory.
+// Used for testing with temp directories.
+func NewLocalMediaStoreAt(baseDir string) *LocalMediaStore {
+	return &LocalMediaStore{baseDir: baseDir}
+}
+
 // BaseDir returns the base media directory for direct file serving.
 func (m *LocalMediaStore) BaseDir() string {
 	return m.baseDir

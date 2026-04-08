@@ -1,0 +1,23 @@
+{
+  "id": "test-collectibles",
+  "displayName": "Test Collectibles",
+  "description": "Sample module for testing with enum, number, and boolean attributes",
+  "attributes": [
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Mint", "Fine", "Poor"]
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false
+    },
+    {
+      "name": "isGraded",
+      "type": "boolean",
+      "required": false
+    }
+  ]
+}

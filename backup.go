@@ -5,8 +5,10 @@ package main
 import (
 	"archive/zip"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
+	"omnicollect/storage"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +59,61 @@ func createBackupArchive(outputPath string, db *sql.DB) error {
 	}
 	if err := addDirToZip(zw, modulesBase, "modules"); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("adding modules: %w", err)
+	}
+
+	return nil
+}
+
+// createCloudBackup exports items and modules from a Store into a JSON-based ZIP.
+// Used when the backend is PostgreSQL (no local SQLite file to copy).
+func createCloudBackup(outputPath string, store storage.Store) error {
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("creating archive: %w", err)
+	}
+	defer outFile.Close()
+
+	zw := zip.NewWriter(outFile)
+	defer zw.Close()
+
+	// Export items as JSON
+	items, err := store.QueryItems("", "", "")
+	if err != nil {
+		return fmt.Errorf("querying items: %w", err)
+	}
+	itemsJSON, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling items: %w", err)
+	}
+	w, err := zw.Create("items.json")
+	if err != nil {
+		return err
+	}
+	w.Write(itemsJSON)
+
+	// Export modules as JSON
+	modules, err := store.GetModules()
+	if err != nil {
+		return fmt.Errorf("querying modules: %w", err)
+	}
+	modulesJSON, err := json.MarshalIndent(modules, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling modules: %w", err)
+	}
+	mw, err := zw.Create("modules.json")
+	if err != nil {
+		return err
+	}
+	mw.Write(modulesJSON)
+
+	// Export settings
+	settings, err := store.GetSettings()
+	if err == nil && settings != "" {
+		sw, err := zw.Create("settings.json")
+		if err != nil {
+			return err
+		}
+		sw.Write([]byte(settings))
 	}
 
 	return nil

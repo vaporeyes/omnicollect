@@ -3,7 +3,10 @@
     "allow": [
       "Bash(go mod:*)",
       "Bash(go vet:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(ls /Users/jsh/dev/projects/omnicollect/*.go)",
+      "Bash(go test:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

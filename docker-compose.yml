@@ -20,6 +20,7 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+    restart: on-failure
 
   postgres:
     image: postgres:16-alpine
@@ -32,10 +33,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-ONLY", "pg_isready", "-U", "omni", "-d", "omnicollect"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U omni -d omnicollect"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   minio:
     image: minio/minio
@@ -49,10 +51,11 @@ services:
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   minio-init:
     image: minio/mc

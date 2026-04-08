@@ -35,10 +35,12 @@ storage/
   db.go          # Store interface (database abstraction)
   media.go       # MediaStore interface (object storage abstraction)
   sqlite.go      # SQLiteStore: local SQLite with FTS5
+  sqlite_test.go # Storage layer unit tests (in-memory SQLite)
   postgres.go    # PostgresStore: PostgreSQL with schema-per-tenant, tsvector
   local.go       # LocalMediaStore: local filesystem
   s3.go          # S3MediaStore: S3-compatible object store
   migrate.go     # SQLite-to-PostgreSQL migration tool
+  testdata/      # Test fixtures (test-module.json, test-image.jpg)
 frontend/src/
   api/
     client.ts    # Centralized fetch-based HTTP client (base URL, typed helpers)
@@ -65,6 +67,9 @@ go run . --serve --port 3001  # Custom port
 go run . --migrate --source /path/to/collection.db --tenant default  # SQLite->PG migration
 go vet ./...     # Lint Go code
 go mod tidy      # Resolve dependencies
+go test ./...    # Run all Go tests (storage + handler)
+go test ./storage/... -cover  # Storage tests with coverage
+cd frontend && npm test       # Run frontend tests (Vitest)
 docker build -t omnicollect .   # Build Docker image
 docker-compose up               # Run full cloud stack (app + postgres + minio)
 ```
@@ -164,6 +169,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - SQLite via modernc.org/sqlite (unchanged) (010-rest-api-migration)
 - Go 1.25+ (backend), TypeScript + Vue 3 (frontend -- minimal changes) + `database/sql` + `lib/pq` (PostgreSQL driver), AWS SDK v2 for Go (S3), Docker multi-stage build (011-cloud-infrastructure)
 - PostgreSQL (cloud) / SQLite (local fallback); S3-compatible object store (cloud) / local filesystem (fallback) (011-cloud-infrastructure)
+- Go 1.25+ (backend tests), TypeScript + Vue 3 (frontend tests) + Go `testing` + `net/http/httptest` (backend), Vitest (frontend) (012-test-coverage)
+- Temporary SQLite `:memory:` databases for test isolation (012-test-coverage)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API
