@@ -7,8 +7,9 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
+
+	"omnicollect/storage"
 )
 
 // Server wraps the App and provides HTTP routing.
@@ -48,13 +49,22 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/v1/settings", s.handleGetSettings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.handleSaveSettings)
 
-	// Media file serving
-	home, _ := os.UserHomeDir()
-	mediaBase := filepath.Join(home, ".omnicollect", "media")
-	s.mux.Handle("/thumbnails/", http.StripPrefix("/thumbnails/",
-		http.FileServer(http.Dir(filepath.Join(mediaBase, "thumbnails")))))
-	s.mux.Handle("/originals/", http.StripPrefix("/originals/",
-		http.FileServer(http.Dir(filepath.Join(mediaBase, "originals")))))
+	// Health
+	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
+
+	// Media file serving: local filesystem or S3 proxy depending on MediaStore type
+	if localStore, ok := s.app.mediaStore.(*storage.LocalMediaStore); ok {
+		// Local mode: serve directly from filesystem
+		mediaBase := localStore.BaseDir()
+		s.mux.Handle("/thumbnails/", http.StripPrefix("/thumbnails/",
+			http.FileServer(http.Dir(filepath.Join(mediaBase, "thumbnails")))))
+		s.mux.Handle("/originals/", http.StripPrefix("/originals/",
+			http.FileServer(http.Dir(filepath.Join(mediaBase, "originals")))))
+	} else {
+		// Cloud mode: proxy from S3
+		s.mux.HandleFunc("/thumbnails/", s.handleMediaProxy("/thumbnails/"))
+		s.mux.HandleFunc("/originals/", s.handleMediaProxy("/originals/"))
+	}
 }
 
 // corsMiddleware adds CORS headers for development.

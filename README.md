@@ -7,17 +7,19 @@ needed to add new collection types.
 
 ## Architecture
 
-- **Backend**: Go with SQLite (via `modernc.org/sqlite`, CGO-free)
+- **Backend**: Go with SQLite (local) or PostgreSQL (cloud)
 - **Frontend**: Vue 3 (Composition API, TypeScript) with Pinia stores
 - **Desktop Shell**: Wails v2 (embeds frontend in native webview)
 - **Image Processing**: `disintegration/imaging` for thumbnail generation
+- **Cloud Storage**: S3-compatible object store (AWS S3, MinIO, R2)
+- **Containerization**: Docker multi-stage build, docker-compose for dev
 
 ## Core Principles
 
 See [Constitution](.specify/memory/constitution.md) for the full set.
 Key rules:
 
-1. **Local-First**: SQLite is the source of truth. 100% offline.
+1. **Local-First**: SQLite is the source of truth in local mode. Cloud mode uses PostgreSQL + S3.
 2. **Schema-Driven UI**: Forms are generated at runtime from JSON
    schemas. No hardcoded collection-type templates.
 3. **Flat Data Architecture**: Single `items` table with JSON
@@ -60,6 +62,34 @@ The production binary is at `build/bin/omnicollect.app` (macOS).
 Run `go run . --serve` to start OmniCollect as a standalone HTTP server.
 The REST API is available at `http://localhost:8080/api/v1/` and the
 frontend is served at the root. No Wails desktop shell required.
+
+### Cloud Deployment
+
+Set environment variables to enable cloud backends:
+
+```bash
+# PostgreSQL + S3 (cloud mode)
+export DATABASE_URL=postgres://user:pass@host:5432/omnicollect
+export S3_ENDPOINT=https://s3.amazonaws.com
+export S3_BUCKET=omnicollect-media
+export S3_ACCESS_KEY=AKIA...
+export S3_SECRET_KEY=secret...
+go run . --serve
+```
+
+Or use Docker:
+
+```bash
+docker build -t omnicollect .
+docker-compose up   # Runs app + PostgreSQL + MinIO
+```
+
+### Data Migration (SQLite to PostgreSQL)
+
+```bash
+export DATABASE_URL=postgres://user:pass@host:5432/omnicollect
+go run . --migrate --source ~/.omnicollect/collection.db --tenant default
+```
 
 ## Adding a Collection Type
 
@@ -121,15 +151,25 @@ Each attribute can include a `display` object:
 
 ```
 omnicollect/
-  main.go              # Wails entry point, AssetServer config
-  app.go               # App struct: SaveItem, GetItems, GetActiveModules,
-                       #   ProcessImage, SelectImageFile, SaveCustomModule,
-                       #   LoadModuleFile, ExportBackup
-  db.go                # SQLite init, schema, FTS5 triggers, CRUD
-  imaging.go           # Image validation, thumbnail generation
+  main.go              # Entry point: --serve, --migrate, or Wails desktop
+  config.go            # Environment-based config (DATABASE_URL, S3_*, etc.)
+  app.go               # Core business logic with Store/MediaStore interfaces
+  db.go                # Legacy helpers (dbFilePath for backup)
+  imaging.go           # Image validation, thumbnail generation (returns bytes)
   backup.go            # ZIP archive export (database + media + modules)
-  modules.go           # Module schema loader + save/find helpers
+  modules.go           # Legacy helpers (modulesDir for backup)
+  settings.go          # Settings methods delegating to Store
   models.go            # Shared types (Item, ModuleSchema, etc.)
+  Dockerfile           # Multi-stage build (Go + Node -> alpine)
+  docker-compose.yml   # Dev stack (app + postgres + minio)
+  storage/
+    db.go              # Store interface (database abstraction)
+    media.go           # MediaStore interface (storage abstraction)
+    sqlite.go          # SQLiteStore: local SQLite with FTS5
+    postgres.go        # PostgresStore: PostgreSQL schema-per-tenant
+    local.go           # LocalMediaStore: local filesystem
+    s3.go              # S3MediaStore: S3-compatible object store
+    migrate.go         # SQLite-to-PostgreSQL migration tool
   wails.json           # Wails project config
   frontend/
     src/
@@ -162,7 +202,7 @@ omnicollect/
 
 ## Data Storage
 
-All data is stored locally:
+### Local Mode (default, no env vars)
 
 | Data | Location |
 |------|----------|
@@ -170,6 +210,16 @@ All data is stored locally:
 | Module schemas | `~/.omnicollect/modules/*.json` |
 | Original images | `~/.omnicollect/media/originals/` |
 | Thumbnails | `~/.omnicollect/media/thumbnails/` |
+
+### Cloud Mode (env vars set)
+
+| Data | Location |
+|------|----------|
+| Database | PostgreSQL (schema-per-tenant: `tenant_{id}`) |
+| Module schemas | PostgreSQL `modules` table (JSONB) |
+| Original images | S3 `originals/` prefix |
+| Thumbnails | S3 `thumbnails/` prefix |
+| Settings | PostgreSQL `settings` table |
 
 ## Dependencies
 
@@ -179,6 +229,8 @@ All data is stored locally:
 |---------|---------|
 | `github.com/wailsapp/wails/v2` | Desktop framework + IPC |
 | `modernc.org/sqlite` | CGO-free SQLite driver |
+| `github.com/lib/pq` | PostgreSQL driver |
+| `github.com/aws/aws-sdk-go-v2` | S3-compatible object storage |
 | `github.com/google/uuid` | UUID v4 generation |
 | `github.com/disintegration/imaging` | Image resize/crop |
 | `golang.org/x/image/webp` | WebP format support |
@@ -282,3 +334,8 @@ transfer to another machine.
     REST endpoints under /api/v1/, fetch-based frontend client, standalone
     server mode (--serve), multipart image upload, Content-Disposition
     downloads for export, TypeScript API types replacing Wails codegen
+11. **Cloud Infrastructure** (011): Storage abstraction layer (Store +
+    MediaStore interfaces), PostgreSQL backend with schema-per-tenant
+    isolation and tsvector FTS, S3-compatible media storage, SQLite-to-PG
+    migration tool (--migrate), Docker multi-stage build, docker-compose
+    dev stack, health check endpoint, config via environment variables

@@ -4,21 +4,24 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
+	"omnicollect/storage"
+
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App is the main application struct bound to the Wails frontend.
 type App struct {
-	ctx     context.Context
-	db      *sql.DB
-	modules []ModuleSchema
+	ctx        context.Context
+	store      storage.Store
+	mediaStore storage.MediaStore
+	modules    []ModuleSchema
+	config     Config
 }
 
 // NewApp creates a new App instance.
@@ -29,17 +32,50 @@ func NewApp() *App {
 // Init initializes the database and loads module schemas.
 // Can be called from both Wails startup and standalone HTTP server.
 func (a *App) Init() {
-	db, err := initDB()
-	if err != nil {
-		log.Fatalf("failed to initialize database: %v", err)
-	}
-	a.db = db
+	a.InitWithConfig(LoadConfig())
+}
 
-	modules, err := loadModuleSchemas()
+// InitWithConfig initializes with an explicit config. Instantiates the
+// appropriate Store and MediaStore based on cloud vs local settings.
+func (a *App) InitWithConfig(cfg Config) {
+	a.config = cfg
+
+	// Initialize database store
+	if cfg.IsCloudDB() {
+		pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL, cfg.TenantID)
+		if err != nil {
+			log.Fatalf("failed to initialize PostgreSQL: %v", err)
+		}
+		a.store = pgStore
+	} else {
+		sqliteStore, err := storage.NewSQLiteStore()
+		if err != nil {
+			log.Fatalf("failed to initialize SQLite: %v", err)
+		}
+		a.store = sqliteStore
+	}
+
+	// Initialize media store
+	if cfg.IsCloudStorage() {
+		s3Store, err := storage.NewS3MediaStore(cfg.S3Endpoint, cfg.S3Bucket, cfg.S3AccessKey, cfg.S3SecretKey, cfg.S3Region)
+		if err != nil {
+			log.Fatalf("failed to initialize S3 storage: %v", err)
+		}
+		a.mediaStore = s3Store
+	} else {
+		localStore, err := storage.NewLocalMediaStore()
+		if err != nil {
+			log.Fatalf("failed to initialize local media storage: %v", err)
+		}
+		a.mediaStore = localStore
+	}
+
+	// Load modules from store
+	modules, err := a.store.GetModules()
 	if err != nil {
 		log.Fatalf("failed to load module schemas: %v", err)
 	}
-	a.modules = modules
+	a.modules = toMainModules(modules)
 	log.Printf("loaded %d module schema(s)", len(a.modules))
 }
 
@@ -67,17 +103,29 @@ func (a *App) SaveItem(item Item) (Item, error) {
 		item.Attributes = map[string]any{}
 	}
 
+	si := toStorageItem(item)
+	var result storage.Item
+	var err error
 	if item.ID == "" {
-		return insertItem(a.db, item)
+		result, err = a.store.InsertItem(si)
+	} else {
+		result, err = a.store.UpdateItem(si)
 	}
-	return updateItem(a.db, item)
+	if err != nil {
+		return Item{}, err
+	}
+	return fromStorageItem(result), nil
 }
 
 // GetItems retrieves items with optional full-text search, module filter,
 // and attribute filters. Pass empty strings to skip any filter dimension.
 // filtersJSON is a JSON array of {field, op, value/values} objects.
 func (a *App) GetItems(query string, moduleID string, filtersJSON string) ([]Item, error) {
-	return queryItems(a.db, query, moduleID, filtersJSON)
+	items, err := a.store.QueryItems(query, moduleID, filtersJSON)
+	if err != nil {
+		return nil, err
+	}
+	return fromStorageItems(items), nil
 }
 
 // DeleteItem removes a collection item by ID.
@@ -85,7 +133,7 @@ func (a *App) DeleteItem(id string) error {
 	if id == "" {
 		return fmt.Errorf("item ID is required")
 	}
-	return deleteItem(a.db, id)
+	return a.store.DeleteItem(id)
 }
 
 // BulkDeleteResult holds the count of deleted items.
@@ -103,7 +151,7 @@ func (a *App) DeleteItems(ids []string) (BulkDeleteResult, error) {
 	if len(ids) == 0 {
 		return BulkDeleteResult{}, fmt.Errorf("no item IDs provided")
 	}
-	deleted, err := deleteItems(a.db, ids)
+	deleted, err := a.store.DeleteItems(ids)
 	if err != nil {
 		return BulkDeleteResult{}, err
 	}
@@ -118,7 +166,7 @@ func (a *App) ExportItemsCSV(ids []string) (string, error) {
 		return "", fmt.Errorf("no item IDs provided")
 	}
 
-	csv, err := exportItemsCSV(a.db, ids, a.modules)
+	csv, err := a.store.ExportItemsCSV(ids, toStorageModules(a.modules))
 	if err != nil {
 		return "", err
 	}
@@ -153,7 +201,7 @@ func (a *App) BulkUpdateModule(ids []string, newModuleID string) (BulkUpdateResu
 	if newModuleID == "" {
 		return BulkUpdateResult{}, fmt.Errorf("new module ID is required")
 	}
-	updated, err := bulkUpdateModule(a.db, ids, newModuleID)
+	updated, err := a.store.BulkUpdateModule(ids, newModuleID)
 	if err != nil {
 		return BulkUpdateResult{}, err
 	}
@@ -166,63 +214,70 @@ func (a *App) GetActiveModules() ([]ModuleSchema, error) {
 }
 
 // ProcessImage validates and processes a local image file.
-// Copies the original and generates a 300x300 JPEG thumbnail.
+// Generates thumbnail bytes and persists via MediaStore.
 func (a *App) ProcessImage(sourcePath string) (ProcessImageResult, error) {
 	if sourcePath == "" {
 		return ProcessImageResult{}, fmt.Errorf("source path is required")
 	}
-	return processImage(sourcePath)
+
+	data, err := processImageToBytes(sourcePath)
+	if err != nil {
+		return ProcessImageResult{}, err
+	}
+
+	// Persist via MediaStore
+	if err := a.mediaStore.SaveOriginal(data.OriginalFile, data.OriginalBytes); err != nil {
+		return ProcessImageResult{}, fmt.Errorf("saving original: %w", err)
+	}
+	if err := a.mediaStore.SaveThumbnail(data.ThumbFile, data.ThumbBytes); err != nil {
+		return ProcessImageResult{}, fmt.Errorf("saving thumbnail: %w", err)
+	}
+
+	return ProcessImageResult{
+		Filename:      data.Filename,
+		OriginalPath:  data.OriginalFile,
+		ThumbnailPath: data.ThumbFile,
+		Width:         data.Width,
+		Height:        data.Height,
+		Format:        data.Format,
+	}, nil
 }
 
-// SaveCustomModule validates and writes a module schema JSON file to disk.
+// SaveCustomModule validates and saves a module schema.
 // After saving, reloads the in-memory module list so the schema is
 // immediately available via GetActiveModules.
 func (a *App) SaveCustomModule(schemaJSON string) (ModuleSchema, error) {
-	var schema ModuleSchema
+	var schema storage.ModuleSchema
 	if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
 		return ModuleSchema{}, fmt.Errorf("invalid JSON: %w", err)
 	}
 
-	if err := validateModuleSchema(&schema); err != nil {
+	if err := storage.ValidateModuleSchema(&schema); err != nil {
 		return ModuleSchema{}, err
 	}
 
-	if err := saveModuleFile(&schema); err != nil {
+	if err := a.store.SaveModule(schema); err != nil {
 		return ModuleSchema{}, err
 	}
 
 	// Reload all module schemas
-	modules, err := loadModuleSchemas()
+	modules, err := a.store.GetModules()
 	if err != nil {
 		log.Printf("warning: failed to reload modules after save: %v", err)
 	} else {
-		a.modules = modules
+		a.modules = toMainModules(modules)
 	}
 
-	return schema, nil
+	return fromStorageModule(schema), nil
 }
 
-// LoadModuleFile reads a module schema file from disk and returns its
-// raw JSON content for editing in the schema builder.
+// LoadModuleFile reads a module schema and returns its raw JSON content
+// for editing in the schema builder.
 func (a *App) LoadModuleFile(moduleID string) (string, error) {
 	if moduleID == "" {
 		return "", fmt.Errorf("module ID is required")
 	}
-
-	path, err := findModuleFile(moduleID)
-	if err != nil {
-		return "", fmt.Errorf("finding module file: %w", err)
-	}
-	if path == "" {
-		return "", fmt.Errorf("module not found: %s", moduleID)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("reading module file: %w", err)
-	}
-
-	return string(data), nil
+	return a.store.LoadModuleFile(moduleID)
 }
 
 // ExportBackup creates a ZIP archive containing the database, media,
@@ -246,7 +301,13 @@ func (a *App) ExportBackup() (string, error) {
 		return "", nil // user cancelled
 	}
 
-	if err := createBackupArchive(path, a.db); err != nil {
+	// Backup only works with SQLiteStore (local mode)
+	sqliteStore, ok := a.store.(*storage.SQLiteStore)
+	if !ok {
+		return "", fmt.Errorf("backup export is only available in local mode")
+	}
+
+	if err := createBackupArchive(path, sqliteStore.DB()); err != nil {
 		return "", fmt.Errorf("creating backup: %w", err)
 	}
 
@@ -266,4 +327,110 @@ func (a *App) SelectImageFile() (string, error) {
 		return "", fmt.Errorf("file dialog: %w", err)
 	}
 	return path, nil
+}
+
+// --- Type conversion helpers between main.* and storage.* types ---
+
+func toStorageItem(item Item) storage.Item {
+	return storage.Item{
+		ID:            item.ID,
+		ModuleID:      item.ModuleID,
+		Title:         item.Title,
+		PurchasePrice: item.PurchasePrice,
+		Images:        item.Images,
+		Attributes:    item.Attributes,
+		CreatedAt:     item.CreatedAt,
+		UpdatedAt:     item.UpdatedAt,
+	}
+}
+
+func fromStorageItem(item storage.Item) Item {
+	return Item{
+		ID:            item.ID,
+		ModuleID:      item.ModuleID,
+		Title:         item.Title,
+		PurchasePrice: item.PurchasePrice,
+		Images:        item.Images,
+		Attributes:    item.Attributes,
+		CreatedAt:     item.CreatedAt,
+		UpdatedAt:     item.UpdatedAt,
+	}
+}
+
+func fromStorageItems(items []storage.Item) []Item {
+	result := make([]Item, len(items))
+	for i, item := range items {
+		result[i] = fromStorageItem(item)
+	}
+	return result
+}
+
+func toStorageModule(m ModuleSchema) storage.ModuleSchema {
+	attrs := make([]storage.AttributeSchema, len(m.Attributes))
+	for i, a := range m.Attributes {
+		attrs[i] = storage.AttributeSchema{
+			Name:     a.Name,
+			Type:     a.Type,
+			Required: a.Required,
+			Options:  a.Options,
+		}
+		if a.Display != nil {
+			attrs[i].Display = &storage.DisplayHints{
+				Label:       a.Display.Label,
+				Placeholder: a.Display.Placeholder,
+				Widget:      a.Display.Widget,
+				Group:       a.Display.Group,
+				Order:       a.Display.Order,
+			}
+		}
+	}
+	return storage.ModuleSchema{
+		ID:          m.ID,
+		DisplayName: m.DisplayName,
+		Description: m.Description,
+		Attributes:  attrs,
+	}
+}
+
+func toStorageModules(modules []ModuleSchema) []storage.ModuleSchema {
+	result := make([]storage.ModuleSchema, len(modules))
+	for i, m := range modules {
+		result[i] = toStorageModule(m)
+	}
+	return result
+}
+
+func fromStorageModule(m storage.ModuleSchema) ModuleSchema {
+	attrs := make([]AttributeSchema, len(m.Attributes))
+	for i, a := range m.Attributes {
+		attrs[i] = AttributeSchema{
+			Name:     a.Name,
+			Type:     a.Type,
+			Required: a.Required,
+			Options:  a.Options,
+		}
+		if a.Display != nil {
+			attrs[i].Display = &DisplayHints{
+				Label:       a.Display.Label,
+				Placeholder: a.Display.Placeholder,
+				Widget:      a.Display.Widget,
+				Group:       a.Display.Group,
+				Order:       a.Display.Order,
+			}
+		}
+	}
+	return ModuleSchema{
+		ID:          m.ID,
+		DisplayName: m.DisplayName,
+		Description: m.Description,
+		Attributes:  attrs,
+	}
+}
+
+func toMainModules(modules []storage.ModuleSchema) []ModuleSchema {
+	result := make([]ModuleSchema, len(modules))
+	for i, m := range modules {
+		result[i] = fromStorageModule(m)
+	}
+	return result
 }

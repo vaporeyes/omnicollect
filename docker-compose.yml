@@ -1,0 +1,70 @@
+# ABOUTME: Development docker-compose stack for OmniCollect cloud mode.
+# ABOUTME: Runs app + PostgreSQL + MinIO (S3-compatible) with auto bucket creation.
+
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://omni:omni@postgres:5432/omnicollect?sslmode=disable
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: omnicollect
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_REGION: us-east-1
+      PORT: "8080"
+      TENANT_ID: default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: omni
+      POSTGRES_PASSWORD: omni
+      POSTGRES_DB: omnicollect
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-ONLY", "pg_isready", "-U", "omni", "-d", "omnicollect"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/omnicollect
+      "
+
+volumes:
+  pgdata:
+  miniodata:

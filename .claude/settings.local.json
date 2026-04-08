@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(go mod:*)",
-      "Bash(go vet:*)"
+      "Bash(go vet:*)",
+      "Bash(bash:*)"
     ]
   }
 }

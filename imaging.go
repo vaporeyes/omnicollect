@@ -1,11 +1,13 @@
 // ABOUTME: Image processing for thumbnail generation and original archival.
-// ABOUTME: Uses disintegration/imaging (pure Go, CGO-free) for resize/crop.
+// ABOUTME: Returns processed bytes for callers to persist via MediaStore.
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	_ "image/gif"
+	"image/jpeg"
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
@@ -18,30 +20,17 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// mediaDir returns the base media directory path.
-func mediaDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".omnicollect", "media"), nil
-}
-
-// ensureMediaDirs creates the originals and thumbnails directories if needed.
-func ensureMediaDirs() (origDir, thumbDir string, err error) {
-	base, err := mediaDir()
-	if err != nil {
-		return "", "", err
-	}
-	origDir = filepath.Join(base, "originals")
-	thumbDir = filepath.Join(base, "thumbnails")
-	if err := os.MkdirAll(origDir, 0755); err != nil {
-		return "", "", fmt.Errorf("creating originals dir: %w", err)
-	}
-	if err := os.MkdirAll(thumbDir, 0755); err != nil {
-		return "", "", fmt.Errorf("creating thumbnails dir: %w", err)
-	}
-	return origDir, thumbDir, nil
+// ProcessImageResult contains metadata about a processed image.
+// Defined here to keep imaging self-contained; re-exported from models.go.
+type processedImageData struct {
+	Filename      string
+	OriginalFile  string
+	ThumbFile     string
+	OriginalBytes []byte
+	ThumbBytes    []byte
+	Width         int
+	Height        int
+	Format        string
 }
 
 // validateImage checks that a file is a supported image by reading its header.
@@ -72,28 +61,24 @@ func validateImage(path string) (format string, width, height int, err error) {
 // with larger TIFFs should convert before importing.
 const maxImageFileSize = 30 * 1024 * 1024
 
-// processImage validates, copies the original, and generates a thumbnail.
-func processImage(sourcePath string) (ProcessImageResult, error) {
+// processImageToBytes validates an image, reads the original bytes, and generates
+// thumbnail bytes in memory. The caller persists via MediaStore.
+func processImageToBytes(sourcePath string) (processedImageData, error) {
 	// Check file size before expensive decode
 	info, err := os.Stat(sourcePath)
 	if err != nil {
-		return ProcessImageResult{}, fmt.Errorf("reading file info: %w", err)
+		return processedImageData{}, fmt.Errorf("reading file info: %w", err)
 	}
 	if info.Size() > maxImageFileSize {
 		sizeMB := info.Size() / (1024 * 1024)
-		return ProcessImageResult{}, fmt.Errorf(
+		return processedImageData{}, fmt.Errorf(
 			"image too large (%d MB). Maximum supported size is %d MB",
 			sizeMB, maxImageFileSize/(1024*1024))
 	}
 
 	format, width, height, err := validateImage(sourcePath)
 	if err != nil {
-		return ProcessImageResult{}, err
-	}
-
-	origDir, thumbDir, err := ensureMediaDirs()
-	if err != nil {
-		return ProcessImageResult{}, err
+		return processedImageData{}, err
 	}
 
 	// Generate UUID-based filename
@@ -105,41 +90,47 @@ func processImage(sourcePath string) (ProcessImageResult, error) {
 	origFilename := id + strings.ToLower(ext)
 	thumbFilename := id + ".jpg"
 
-	// Copy original
-	origPath := filepath.Join(origDir, origFilename)
-	if err := copyFile(sourcePath, origPath); err != nil {
-		return ProcessImageResult{}, fmt.Errorf("copying original: %w", err)
+	// Read original bytes
+	origBytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return processedImageData{}, fmt.Errorf("reading original: %w", err)
 	}
 
-	// Generate thumbnail
-	thumbPath := filepath.Join(thumbDir, thumbFilename)
-	if err := generateThumbnail(sourcePath, thumbPath); err != nil {
-		os.Remove(origPath) // clean up on failure
-		return ProcessImageResult{}, fmt.Errorf("generating thumbnail: %w", err)
+	// Generate thumbnail bytes in memory
+	thumbBytes, err := generateThumbnailBytes(sourcePath)
+	if err != nil {
+		return processedImageData{}, fmt.Errorf("generating thumbnail: %w", err)
 	}
 
-	return ProcessImageResult{
+	return processedImageData{
 		Filename:      thumbFilename,
-		OriginalPath:  origFilename,
-		ThumbnailPath: thumbFilename,
+		OriginalFile:  origFilename,
+		ThumbFile:     thumbFilename,
+		OriginalBytes: origBytes,
+		ThumbBytes:    thumbBytes,
 		Width:         width,
 		Height:        height,
 		Format:        format,
 	}, nil
 }
 
-// generateThumbnail creates a 300x300 center-cropped JPEG thumbnail.
-func generateThumbnail(srcPath, dstPath string) error {
+// generateThumbnailBytes creates a 300x300 center-cropped JPEG thumbnail and returns the bytes.
+func generateThumbnailBytes(srcPath string) ([]byte, error) {
 	src, err := imaging.Open(srcPath, imaging.AutoOrientation(true))
 	if err != nil {
-		return fmt.Errorf("opening image: %w", err)
+		return nil, fmt.Errorf("opening image: %w", err)
 	}
 
 	thumb := imaging.Fill(src, 300, 300, imaging.Center, imaging.Lanczos)
-	return imaging.Save(thumb, dstPath, imaging.JPEGQuality(80))
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 80}); err != nil {
+		return nil, fmt.Errorf("encoding thumbnail: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
-// copyFile copies a file from src to dst.
+// copyFile copies a file from src to dst. Retained for backup and other uses.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {

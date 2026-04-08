@@ -18,15 +18,27 @@ immutable engineering principles.
 ## Project Structure
 
 ```
-main.go          # Entry point: --serve for standalone HTTP, default for Wails desktop
+main.go          # Entry point: --serve, --migrate, or default Wails desktop
+config.go        # Environment-based config (DATABASE_URL, S3_*, PORT, TENANT_ID)
 server.go        # HTTP server setup, routing, CORS middleware
 handlers.go      # REST endpoint handlers wrapping App methods
-app.go           # Core business logic: SaveItem, GetItems, etc.
-db.go            # SQLite init, DDL, FTS5 triggers, CRUD helpers
-imaging.go       # Image validation, copy, thumbnail generation
+app.go           # Core business logic with Store/MediaStore interfaces
+db.go            # Legacy helpers (dbFilePath for backup)
+imaging.go       # Image validation, thumbnail generation (returns bytes)
 backup.go        # ZIP archive export (database + media + modules)
-modules.go       # Module schema loader, save, find helpers
+modules.go       # Legacy helpers (modulesDir for backup)
+settings.go      # Wails-bound settings methods delegating to Store
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
+Dockerfile       # Multi-stage build (Go + Node -> alpine)
+docker-compose.yml # Dev stack (app + postgres + minio)
+storage/
+  db.go          # Store interface (database abstraction)
+  media.go       # MediaStore interface (object storage abstraction)
+  sqlite.go      # SQLiteStore: local SQLite with FTS5
+  postgres.go    # PostgresStore: PostgreSQL with schema-per-tenant, tsvector
+  local.go       # LocalMediaStore: local filesystem
+  s3.go          # S3MediaStore: S3-compatible object store
+  migrate.go     # SQLite-to-PostgreSQL migration tool
 frontend/src/
   api/
     client.ts    # Centralized fetch-based HTTP client (base URL, typed helpers)
@@ -50,8 +62,11 @@ wails dev        # Desktop development with hot reload
 wails build      # Production desktop binary to build/bin/
 go run . --serve # Standalone HTTP server mode (port 8080)
 go run . --serve --port 3001  # Custom port
+go run . --migrate --source /path/to/collection.db --tenant default  # SQLite->PG migration
 go vet ./...     # Lint Go code
 go mod tidy      # Resolve dependencies
+docker build -t omnicollect .   # Build Docker image
+docker-compose up               # Run full cloud stack (app + postgres + minio)
 ```
 
 ## Key Conventions
@@ -106,12 +121,33 @@ go mod tidy      # Resolve dependencies
 | `/api/v1/export/backup` | GET | Download backup ZIP |
 | `/api/v1/export/csv` | POST | Download CSV for selected items |
 | `/api/v1/settings` | GET/PUT | Load/save app settings |
+| `/api/v1/health` | GET | Database and storage connectivity check |
+
+## Cloud Configuration (Environment Variables)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| DATABASE_URL | (empty = local SQLite) | PostgreSQL connection string |
+| S3_ENDPOINT | (empty = local filesystem) | S3-compatible endpoint URL |
+| S3_BUCKET | (empty) | Bucket name for media storage |
+| S3_ACCESS_KEY | (empty) | S3 access key |
+| S3_SECRET_KEY | (empty) | S3 secret key |
+| S3_REGION | us-east-1 | S3 region |
+| PORT | 8080 | HTTP server listen port |
+| TENANT_ID | default | PostgreSQL schema-per-tenant isolation |
 
 ## Data Locations
 
+### Local Mode (no env vars)
 - Database: `~/Library/Application Support/OmniCollect/collection.db`
 - Modules: `~/.omnicollect/modules/`
 - Media: `~/.omnicollect/media/originals/` and `thumbnails/`
+
+### Cloud Mode
+- Database: PostgreSQL (schema-per-tenant, tsvector FTS, JSONB attributes)
+- Modules: PostgreSQL `modules` table (schema_json JSONB)
+- Media: S3-compatible object store (originals/ and thumbnails/ prefixes)
+- Settings: PostgreSQL `settings` table
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
@@ -126,6 +162,8 @@ go mod tidy      # Resolve dependencies
 - SQLite via modernc.org/sqlite (batch delete in transaction, CSV query) (009-bulk-actions)
 - Go 1.25+ (backend -- HTTP server + router), TypeScript + Vue 3 (frontend) + Go `net/http` + lightweight router, Pinia (state), `fetch` API (no Axios needed) (010-rest-api-migration)
 - SQLite via modernc.org/sqlite (unchanged) (010-rest-api-migration)
+- Go 1.25+ (backend), TypeScript + Vue 3 (frontend -- minimal changes) + `database/sql` + `lib/pq` (PostgreSQL driver), AWS SDK v2 for Go (S3), Docker multi-stage build (011-cloud-infrastructure)
+- PostgreSQL (cloud) / SQLite (local fallback); S3-compatible object store (cloud) / local filesystem (fallback) (011-cloud-infrastructure)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"omnicollect/storage"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -166,7 +169,13 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 // Export
 
 func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
-	// Create backup to temp file
+	// Backup only works with SQLiteStore (local mode)
+	sqliteStore, ok := s.app.store.(*storage.SQLiteStore)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "backup export is only available in local mode")
+		return
+	}
+
 	tmp, err := os.CreateTemp("", "omnicollect-backup-*.zip")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "creating temp file: "+err.Error())
@@ -176,7 +185,7 @@ func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
-	if err := createBackupArchive(tmpPath, s.app.db); err != nil {
+	if err := createBackupArchive(tmpPath, sqliteStore.DB()); err != nil {
 		writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
 		return
 	}
@@ -196,7 +205,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csv, err := exportItemsCSV(s.app.db, body.IDs, s.app.modules)
+	csv, err := s.app.store.ExportItemsCSV(body.IDs, toStorageModules(s.app.modules))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -214,7 +223,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	content, err := s.app.LoadSettings()
 	if err != nil {
-		// Return empty object if no settings file
+		// Return empty object if no settings
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("{}"))
@@ -238,6 +247,38 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// Health
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	result := map[string]string{
+		"status":   "ok",
+		"database": "connected",
+		"storage":  "connected",
+	}
+
+	// Check database connectivity
+	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+		if err := pgStore.Ping(context.Background()); err != nil {
+			result["status"] = "error"
+			result["database"] = "disconnected"
+		}
+	}
+
+	// Check S3 connectivity
+	if s3Store, ok := s.app.mediaStore.(*storage.S3MediaStore); ok {
+		if err := s3Store.Ping(context.Background()); err != nil {
+			result["status"] = "error"
+			result["storage"] = "disconnected"
+		}
+	}
+
+	status := http.StatusOK
+	if result["status"] == "error" {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, result)
+}
+
 // ServeFrontend serves the built Vue frontend for non-API routes.
 func ServeFrontend(distDir string) http.Handler {
 	fs := http.FileServer(http.Dir(distDir))
@@ -251,4 +292,51 @@ func ServeFrontend(distDir string) http.Handler {
 		// SPA fallback: serve index.html for client-side routing
 		http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
 	})
+}
+
+// handleMediaProxy proxies media requests to S3 via the S3MediaStore.
+func (s *Server) handleMediaProxy(prefix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		filename := r.URL.Path[len(prefix):]
+		if filename == "" {
+			http.NotFound(w, r)
+			return
+		}
+
+		s3Store, ok := s.app.mediaStore.(*storage.S3MediaStore)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+
+		var data []byte
+		var err error
+		if prefix == "/originals/" {
+			data, err = s3Store.GetOriginal(context.Background(), filename)
+		} else {
+			data, err = s3Store.GetThumbnail(context.Background(), filename)
+		}
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Detect content type from extension
+		ct := "application/octet-stream"
+		ext := filepath.Ext(filename)
+		switch ext {
+		case ".jpg", ".jpeg":
+			ct = "image/jpeg"
+		case ".png":
+			ct = "image/png"
+		case ".gif":
+			ct = "image/gif"
+		case ".webp":
+			ct = "image/webp"
+		}
+
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(data)
+	}
 }
