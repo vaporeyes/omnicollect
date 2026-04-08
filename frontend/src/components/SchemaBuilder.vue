@@ -131,11 +131,23 @@ async function onSave() {
   }
 }
 
+const showDiscardConfirm = ref(false)
+
 function onCancel() {
-  if (hasChanges.value && !confirm('You have unsaved changes. Discard?')) {
+  if (hasChanges.value) {
+    showDiscardConfirm.value = true
     return
   }
   emit('close')
+}
+
+function confirmDiscard() {
+  showDiscardConfirm.value = false
+  emit('close')
+}
+
+function cancelDiscard() {
+  showDiscardConfirm.value = false
 }
 </script>
 
@@ -168,10 +180,86 @@ function onCancel() {
         />
       </div>
     </div>
+
+    <!-- Discard changes confirmation -->
+    <Teleport to="body">
+      <div v-if="showDiscardConfirm" class="confirm-overlay" @click.self="cancelDiscard">
+        <div class="confirm-dialog">
+          <p class="confirm-title">Unsaved Changes</p>
+          <p class="confirm-message">You have unsaved changes. Discard them?</p>
+          <div class="confirm-actions">
+            <button class="confirm-cancel-btn" @click="cancelDiscard">Keep Editing</button>
+            <button class="confirm-delete-btn" @click="confirmDiscard">Discard</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4000;
+}
+.confirm-dialog {
+  background: var(--bg-primary, #1e1e2e);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: var(--radius-md);
+  padding: 28px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: var(--shadow-lg);
+}
+.confirm-title {
+  margin: 0 0 4px;
+  font-family: 'Instrument Serif', serif;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+.confirm-message {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm-cancel-btn {
+  padding: 8px 18px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Outfit', sans-serif;
+}
+.confirm-cancel-btn:hover {
+  background: var(--bg-hover);
+}
+.confirm-delete-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--error-border, #dc2626);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Outfit', sans-serif;
+}
+.confirm-delete-btn:hover {
+  background: #b91c1c;
+}
 .schema-builder {
   display: flex;
   flex-direction: column;

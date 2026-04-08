@@ -126,6 +126,8 @@ func (s *PostgresStore) initTenantSchema() error {
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_module_id ON items(module_id)`,
+		// Migration: add tags column if table existed before tags feature
+		`ALTER TABLE items ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'`,
 		`CREATE INDEX IF NOT EXISTS idx_items_tags ON items USING GIN(tags)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_search_vector ON items USING GIN(search_vector)`,
 		`CREATE TABLE IF NOT EXISTS modules (

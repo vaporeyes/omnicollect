@@ -21,7 +21,6 @@ const emit = defineEmits<{
         <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
       </svg>
       <p>No collection types yet</p>
-      <button class="cta-btn" @click="emit('createSchema')">Create Your First Schema</button>
     </div>
     <ul v-else class="module-list">
       <li
