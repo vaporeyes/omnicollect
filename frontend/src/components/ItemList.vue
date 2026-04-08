@@ -1,22 +1,22 @@
 <script lang="ts" setup>
 import {ref, computed} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {Item, ModuleSchema} from '../api/types'
 import {useSelectionStore} from '../stores/selectionStore'
 
 const selectionStore = useSelectionStore()
 
 const props = defineProps<{
-  items: main.Item[]
-  modules: main.ModuleSchema[]
+  items: Item[]
+  modules: ModuleSchema[]
   activeModuleId?: string
 }>()
 
 const emit = defineEmits<{
-  select: [item: main.Item]
+  select: [item: Item]
   filterChange: [moduleId: string]
   search: [query: string]
   addItem: []
-  itemContextMenu: [item: main.Item, x: number, y: number]
+  itemContextMenu: [item: Item, x: number, y: number]
 }>()
 
 const searchText = ref('')
@@ -129,7 +129,7 @@ const someSelected = computed(() =>
   sortedItems.value.some(i => selectionStore.isSelected(i.id)) && !allSelected.value
 )
 
-function onCheckboxClick(event: MouseEvent, item: main.Item, index: number) {
+function onCheckboxClick(event: MouseEvent, item: Item, index: number) {
   event.stopPropagation()
   if (event.shiftKey) {
     selectionStore.shiftSelect(index, sortedItems.value)

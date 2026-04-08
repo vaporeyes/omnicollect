@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import {ref, watch, computed} from 'vue'
-import {SaveCustomModule} from '../../wailsjs/go/main/App'
+import * as api from '../api/client'
 import SchemaVisualEditor from './SchemaVisualEditor.vue'
 import SchemaCodeEditor from './SchemaCodeEditor.vue'
 import SchemaFormPreview from './SchemaFormPreview.vue'
@@ -121,7 +121,7 @@ async function onSave() {
 
   saving.value = true
   try {
-    const schema = await SaveCustomModule(JSON.stringify(draftSchema.value, null, 2))
+    const schema = await api.post('/api/v1/modules', draftSchema.value)
     hasChanges.value = false
     emit('saved', schema)
   } catch (e: any) {

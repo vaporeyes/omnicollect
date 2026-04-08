@@ -1,8 +1,7 @@
 <script lang="ts" setup>
 import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
-import {main} from '../wailsjs/go/models'
-import {LoadModuleFile, ExportBackup, LoadSettings, DeleteItems, ExportItemsCSV, BulkUpdateModule} from '../wailsjs/go/main/App'
-import {WindowSetSystemDefaultTheme} from '../wailsjs/runtime/runtime'
+import * as api from './api/client'
+import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult} from './api/types'
 import {applyPolineTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
@@ -61,13 +60,12 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onGlobalKeydown)
 })
 
-// Tell Wails to follow system theme for window chrome
-try { WindowSetSystemDefaultTheme() } catch { /* ok if not available in dev */ }
+// Theme detection handled by CSS media query (no Wails runtime needed)
 
-const selectedSchema = ref<main.ModuleSchema | null>(null)
-const editingItem = ref<main.Item | null>(null)
-const viewingItem = ref<main.Item | null>(null)
-const viewingSchema = ref<main.ModuleSchema | null>(null)
+const selectedSchema = ref<ModuleSchema | null>(null)
+const editingItem = ref<Item | null>(null)
+const viewingItem = ref<Item | null>(null)
+const viewingSchema = ref<ModuleSchema | null>(null)
 const showForm = ref(false)
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
@@ -90,7 +88,7 @@ const lightboxVisible = ref(false)
 const ctxVisible = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
-const ctxItem = ref<main.Item | null>(null)
+const ctxItem = ref<Item | null>(null)
 const ctxOptions: MenuOption[] = [
   {label: 'View Details', action: 'view'},
   {label: 'Edit', action: 'edit'},
@@ -106,7 +104,7 @@ const builderModuleId = ref<string | null>(null)
 const builderInitialJSON = ref<string | null>(null)
 
 // Context menu handlers
-function onItemContextMenu(item: main.Item, x: number, y: number) {
+function onItemContextMenu(item: Item, x: number, y: number) {
   ctxItem.value = item
   ctxX.value = x
   ctxY.value = y
@@ -137,7 +135,7 @@ function onCtxSelect(action: string) {
 }
 
 // Shared delete logic for both detail view and context menu
-async function onDeleteItem(item: main.Item) {
+async function onDeleteItem(item: Item) {
   const title = item.title
   try {
     await collectionStore.deleteItem(item.id)
@@ -212,7 +210,7 @@ onMounted(async () => {
 
   // Load saved theme settings
   try {
-    const json = await LoadSettings()
+    const json = JSON.stringify(await api.get('/api/v1/settings'))
     const parsed = JSON.parse(json)
     if (parsed.theme) {
       themeConfig.value = {...DEFAULT_CONFIG, ...parsed.theme}
@@ -226,7 +224,7 @@ onMounted(async () => {
   ])
 })
 
-function onModuleSelect(mod: main.ModuleSchema) {
+function onModuleSelect(mod: ModuleSchema) {
   selectionStore.clear()
   selectedSchema.value = mod
   editingItem.value = null
@@ -236,7 +234,7 @@ function onModuleSelect(mod: main.ModuleSchema) {
   showBuilder.value = false
 }
 
-function onItemSelect(item: main.Item) {
+function onItemSelect(item: Item) {
   selectionStore.clear()
   const schema = moduleStore.getModuleById(item.moduleId)
   viewingItem.value = item
@@ -265,7 +263,7 @@ function onCloseDetail() {
   viewingSchema.value = null
 }
 
-function onViewImage(_item: main.Item, filename: string) {
+function onViewImage(_item: Item, filename: string) {
   lightboxFilename.value = filename
   lightboxVisible.value = true
 }
@@ -275,7 +273,7 @@ function onDetailViewImage(filename: string) {
   lightboxVisible.value = true
 }
 
-async function onSave(item: main.Item) {
+async function onSave(item: Item) {
   try {
     const saved = await collectionStore.saveItem(item)
     showForm.value = false
@@ -322,7 +320,7 @@ function onSearch(query: string) {
 }
 
 // Command palette handlers
-function onPaletteSelectItem(item: main.Item) {
+function onPaletteSelectItem(item: Item) {
   showPalette.value = false
   onItemSelect(item)
 }
@@ -350,7 +348,7 @@ async function onBulkDelete() {
   const ids = selectionStore.selectedIdArray()
   const count = ids.length
   try {
-    const result = await DeleteItems(ids)
+    const result = await api.post<BulkDeleteResult>('/api/v1/items/batch-delete', {ids})
     selectionStore.clear()
     await collectionStore.fetchItems()
     toastStore.show(`${result.deleted} item${result.deleted === 1 ? '' : 's'} deleted`, 'success')
@@ -363,10 +361,8 @@ async function onBulkDelete() {
 async function onBulkExportCSV() {
   const ids = selectionStore.selectedIdArray()
   try {
-    const path = await ExportItemsCSV(ids)
-    if (path) {
-      toastStore.show(`Exported ${ids.length} items to ${path.split('/').pop()}`, 'success')
-    }
+    await api.downloadFile('/api/v1/export/csv', {ids})
+    toastStore.show(`Exported ${ids.length} items`, 'success')
   } catch (e: any) {
     toastStore.show(`CSV export failed: ${e?.message ?? e}`, 'error')
   }
@@ -376,7 +372,7 @@ async function onBulkUpdateModule() {
   if (!bulkTargetModuleId.value) return
   const ids = selectionStore.selectedIdArray()
   try {
-    const result = await BulkUpdateModule(ids, bulkTargetModuleId.value)
+    const result = await api.post<BulkUpdateResult>('/api/v1/items/batch-update-module', {ids, newModuleId: bulkTargetModuleId.value})
     selectionStore.clear()
     await collectionStore.fetchItems()
     toastStore.show(`${result.updated} item${result.updated === 1 ? '' : 's'} moved`, 'success')
@@ -393,10 +389,8 @@ const exporting = ref(false)
 async function onExportBackup() {
   exporting.value = true
   try {
-    const path = await ExportBackup()
-    if (path) {
-      toastStore.show(`Backup saved: ${path.split('/').pop()}`, 'success')
-    }
+    await api.downloadFile('/api/v1/export/backup')
+    toastStore.show('Backup downloaded', 'success')
   } catch (e: any) {
     toastStore.show(`Export failed: ${e?.message ?? e}`, 'error')
   } finally {
@@ -412,9 +406,9 @@ function openNewSchemaBuilder() {
   showForm.value = false
 }
 
-async function openEditSchemaBuilder(mod: main.ModuleSchema) {
+async function openEditSchemaBuilder(mod: ModuleSchema) {
   try {
-    const json = await LoadModuleFile(mod.id)
+    const json = await api.get<string>('/api/v1/modules/' + mod.id + '/file')
     builderModuleId.value = mod.id
     builderInitialJSON.value = json
     showBuilder.value = true

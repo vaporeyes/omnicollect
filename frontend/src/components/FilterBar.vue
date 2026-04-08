@@ -2,11 +2,11 @@
 <!-- ABOUTME: Supports enum multi-select pills, boolean tri-state toggles, and number range inputs. -->
 <script lang="ts" setup>
 import {ref, computed, watch} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {ModuleSchema} from '../api/types'
 import type {AttributeFilter} from '../stores/collectionStore'
 
 const props = defineProps<{
-  schema: main.ModuleSchema | null
+  schema: ModuleSchema | null
   filters: Record<string, AttributeFilter[]>
 }>()
 

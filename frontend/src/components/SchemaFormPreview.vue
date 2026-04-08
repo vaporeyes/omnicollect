@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {computed} from 'vue'
 import FormField from './FormField.vue'
-import {main} from '../../wailsjs/go/models'
+import type {AttributeSchema, DisplayHints} from '../api/types'
 
 const props = defineProps<{
   schema: {
@@ -17,16 +17,14 @@ const props = defineProps<{
 }>()
 
 // Convert draft attributes to AttributeSchema format for FormField
-const formAttributes = computed(() => {
-  return props.schema.attributes.map(attr => {
-    return new main.AttributeSchema({
-      name: attr.name || '(unnamed)',
-      type: attr.type || 'string',
-      required: attr.required || false,
-      options: attr.options || [],
-      display: attr.display ? new main.DisplayHints(attr.display) : undefined,
-    })
-  })
+const formAttributes = computed((): AttributeSchema[] => {
+  return props.schema.attributes.map(attr => ({
+    name: attr.name || '(unnamed)',
+    type: attr.type || 'string',
+    required: attr.required || false,
+    options: attr.options || [],
+    display: attr.display ? attr.display as DisplayHints : undefined,
+  }))
 })
 </script>
 

@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {ref} from 'vue'
-import {SelectImageFile, ProcessImage} from '../../wailsjs/go/main/App'
+import * as api from '../api/client'
+import type {ProcessImageResult} from '../api/types'
 
 const props = defineProps<{
   images: string[]
@@ -12,15 +13,22 @@ const emit = defineEmits<{
 
 const error = ref<string | null>(null)
 const processing = ref(false)
+const fileInput = ref<HTMLInputElement | null>(null)
 
-async function onAddImage() {
+function triggerFileInput() {
+  fileInput.value?.click()
+}
+
+async function onFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  input.value = '' // reset so same file can be selected again
+
   error.value = null
+  processing.value = true
   try {
-    const path = await SelectImageFile()
-    if (!path) return // user cancelled
-
-    processing.value = true
-    const result = await ProcessImage(path)
+    const result = await api.postFile<ProcessImageResult>('/api/v1/images/upload', file)
     emit('update:images', [...props.images, result.filename])
   } catch (e: any) {
     error.value = e?.message ?? String(e)
@@ -47,7 +55,14 @@ function removeImage(index: number) {
       </div>
     </div>
 
-    <button type="button" class="btn btn-secondary" :disabled="processing" @click="onAddImage">
+    <input
+      ref="fileInput"
+      type="file"
+      accept="image/jpeg,image/png,image/gif,image/webp"
+      style="display: none"
+      @change="onFileSelected"
+    />
+    <button type="button" class="btn btn-secondary" :disabled="processing" @click="triggerFileInput">
       {{ processing ? 'Processing...' : 'Add Image' }}
     </button>
 

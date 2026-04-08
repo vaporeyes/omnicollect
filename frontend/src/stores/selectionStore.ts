@@ -2,7 +2,7 @@
 // ABOUTME: Manages selected item IDs, Shift-click range selection, and select-all.
 import {defineStore} from 'pinia'
 import {ref, computed} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {Item} from '../api/types'
 
 export const useSelectionStore = defineStore('selection', () => {
   const selectedIds = ref<Set<string>>(new Set())
@@ -26,7 +26,7 @@ export const useSelectionStore = defineStore('selection', () => {
     lastClickedIndex.value = index
   }
 
-  function shiftSelect(targetIndex: number, items: main.Item[]) {
+  function shiftSelect(targetIndex: number, items: Item[]) {
     const anchor = lastClickedIndex.value
     if (anchor === null) {
       toggle(items[targetIndex]?.id, targetIndex)
@@ -41,7 +41,7 @@ export const useSelectionStore = defineStore('selection', () => {
     selectedIds.value = next
   }
 
-  function selectAll(items: main.Item[]) {
+  function selectAll(items: Item[]) {
     const next = new Set<string>()
     for (const item of items) {
       next.add(item.id)

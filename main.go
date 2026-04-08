@@ -1,9 +1,13 @@
-// ABOUTME: Entry point for the OmniCollect Wails application.
-// ABOUTME: Configures window options, binds the App struct, and embeds frontend assets.
+// ABOUTME: Entry point for OmniCollect. Supports two modes:
+// ABOUTME: --serve for standalone HTTP server, or default Wails desktop shell with embedded server.
 package main
 
 import (
 	"embed"
+	"flag"
+	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,9 +21,38 @@ import (
 var assets embed.FS
 
 func main() {
-	app := NewApp()
+	serve := flag.Bool("serve", false, "Start as standalone HTTP server (no desktop window)")
+	port := flag.Int("port", 8080, "HTTP server port (used with --serve)")
+	flag.Parse()
 
-	err := wails.Run(&options.App{
+	app := NewApp()
+	app.Init()
+
+	if *serve {
+		// Standalone HTTP server mode
+		srv := NewServer(app)
+
+		// Serve frontend static files at root
+		distDir := filepath.Join("frontend", "dist")
+		if _, err := os.Stat(distDir); err == nil {
+			srv.mux.Handle("/", ServeFrontend(distDir))
+		} else {
+			log.Printf("warning: frontend/dist not found; run 'cd frontend && npm run build' first")
+		}
+
+		log.Fatal(srv.ListenAndServe(*port))
+	}
+
+	// Desktop mode: start embedded HTTP server on random port, then Wails
+	srv := NewServer(app)
+	ln, err := srv.Start(0) // port 0 = random available
+	if err != nil {
+		log.Fatalf("failed to start embedded server: %v", err)
+	}
+	serverURL := fmt.Sprintf("http://localhost:%d", ln.Addr().(*net.TCPAddr).Port)
+	log.Printf("Embedded server at %s", serverURL)
+
+	err = wails.Run(&options.App{
 		Title:  "OmniCollect",
 		Width:  1024,
 		Height: 768,

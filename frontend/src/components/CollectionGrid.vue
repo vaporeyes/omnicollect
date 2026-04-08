@@ -1,19 +1,19 @@
 <script lang="ts" setup>
-import {main} from '../../wailsjs/go/models'
+import type {Item, ModuleSchema} from '../api/types'
 import {useSelectionStore} from '../stores/selectionStore'
 
 const selectionStore = useSelectionStore()
 
 const props = defineProps<{
-  items: main.Item[]
-  modules: main.ModuleSchema[]
+  items: Item[]
+  modules: ModuleSchema[]
 }>()
 
 const emit = defineEmits<{
-  select: [item: main.Item]
-  viewImage: [item: main.Item, filename: string]
+  select: [item: Item]
+  viewImage: [item: Item, filename: string]
   addItem: []
-  itemContextMenu: [item: main.Item, x: number, y: number]
+  itemContextMenu: [item: Item, x: number, y: number]
 }>()
 
 function moduleName(moduleId: string): string {
@@ -30,7 +30,7 @@ function formatDate(dateStr: string): string {
   }
 }
 
-function onSelectClick(event: MouseEvent, item: main.Item, index: number) {
+function onSelectClick(event: MouseEvent, item: Item, index: number) {
   event.stopPropagation()
   if (event.shiftKey) {
     selectionStore.shiftSelect(index, props.items)

@@ -1,13 +1,13 @@
 <script lang="ts" setup>
-import {main} from '../../wailsjs/go/models'
+import type {ModuleSchema} from '../api/types'
 
 defineProps<{
-  modules: main.ModuleSchema[]
+  modules: ModuleSchema[]
 }>()
 
 const emit = defineEmits<{
-  select: [module: main.ModuleSchema]
-  edit: [module: main.ModuleSchema]
+  select: [module: ModuleSchema]
+  edit: [module: ModuleSchema]
   createSchema: []
 }>()
 </script>

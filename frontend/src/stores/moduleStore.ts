@@ -1,10 +1,10 @@
 import {defineStore} from 'pinia'
 import {ref, computed} from 'vue'
-import {GetActiveModules} from '../../wailsjs/go/main/App'
-import {main} from '../../wailsjs/go/models'
+import * as api from '../api/client'
+import type {ModuleSchema} from '../api/types'
 
 export const useModuleStore = defineStore('modules', () => {
-  const modules = ref<main.ModuleSchema[]>([])
+  const modules = ref<ModuleSchema[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -16,7 +16,7 @@ export const useModuleStore = defineStore('modules', () => {
     loading.value = true
     error.value = null
     try {
-      modules.value = await GetActiveModules()
+      modules.value = await api.get<ModuleSchema[]>('/api/v1/modules')
     } catch (e: any) {
       error.value = e?.message ?? String(e)
     } finally {

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import {ref, reactive, watch, computed} from 'vue'
-import {SaveSettings} from '../../wailsjs/go/main/App'
+import * as api from '../api/client'
 import {
   applyPolineTheme, getPreviewColors,
   DEFAULT_CONFIG, PRESETS,
@@ -76,7 +76,7 @@ async function onSave() {
   saving.value = true
   saveMessage.value = null
   try {
-    await SaveSettings(JSON.stringify({theme: config}))
+    await api.put('/api/v1/settings', {theme: config})
     emit('saved', JSON.parse(JSON.stringify(config)))
     saveMessage.value = 'Settings saved'
     setTimeout(() => { saveMessage.value = null }, 3000)

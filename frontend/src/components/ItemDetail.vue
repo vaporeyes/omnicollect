@@ -1,11 +1,11 @@
 <script lang="ts" setup>
 import {ref, computed} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {Item, ModuleSchema, AttributeSchema} from '../api/types'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 
 const props = defineProps<{
-  item: main.Item
-  schema: main.ModuleSchema | null
+  item: Item
+  schema: ModuleSchema | null
 }>()
 
 const emit = defineEmits<{
@@ -57,7 +57,7 @@ function formatAttrValue(value: any, type: string): string {
   return String(value)
 }
 
-function isTextarea(attr: main.AttributeSchema): boolean {
+function isTextarea(attr: AttributeSchema): boolean {
   return attr.display?.widget === 'textarea'
 }
 

@@ -1,16 +1,16 @@
 <script lang="ts" setup>
 import {reactive, ref, watch, computed} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {Item, ModuleSchema} from '../api/types'
 import FormField from './FormField.vue'
 import ImageAttach from './ImageAttach.vue'
 
 const props = defineProps<{
-  schema: main.ModuleSchema
-  item?: main.Item | null
+  schema: ModuleSchema
+  item?: Item | null
 }>()
 
 const emit = defineEmits<{
-  save: [item: main.Item]
+  save: [item: Item]
   cancel: []
 }>()
 
@@ -75,7 +75,7 @@ function validate(): boolean {
 function onSubmit() {
   if (!validate()) return
 
-  const item = new main.Item({
+  const item: Item = {
     id: props.item?.id ?? '',
     moduleId: props.schema.id,
     title: baseFields.title.trim(),
@@ -84,7 +84,7 @@ function onSubmit() {
     attributes: {...attributes},
     createdAt: props.item?.createdAt ?? '',
     updatedAt: '',
-  })
+  }
 
   emit('save', item)
 }

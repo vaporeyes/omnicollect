@@ -26,11 +26,9 @@ func NewApp() *App {
 	return &App{}
 }
 
-// startup is called by Wails when the application starts.
-// It initializes the database and loads module schemas.
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-
+// Init initializes the database and loads module schemas.
+// Can be called from both Wails startup and standalone HTTP server.
+func (a *App) Init() {
 	db, err := initDB()
 	if err != nil {
 		log.Fatalf("failed to initialize database: %v", err)
@@ -43,6 +41,12 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.modules = modules
 	log.Printf("loaded %d module schema(s)", len(a.modules))
+}
+
+// startup is called by Wails when the application starts.
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.Init()
 }
 
 // SaveItem creates or updates a collection item.

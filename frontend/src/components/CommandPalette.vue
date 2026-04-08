@@ -2,7 +2,7 @@
 <!-- ABOUTME: Triggered by Cmd/Ctrl+K, searches items across all modules with keyboard navigation. -->
 <script lang="ts" setup>
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {Item} from '../api/types'
 import {useCollectionStore} from '../stores/collectionStore'
 import {useModuleStore} from '../stores/moduleStore'
 
@@ -12,7 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  selectItem: [item: main.Item]
+  selectItem: [item: Item]
   action: [action: string]
 }>()
 
@@ -20,7 +20,7 @@ const collectionStore = useCollectionStore()
 const moduleStore = useModuleStore()
 
 const query = ref('')
-const results = ref<main.Item[]>([])
+const results = ref<Item[]>([])
 const highlightedIndex = ref(0)
 const inputEl = ref<HTMLInputElement | null>(null)
 const resultsEl = ref<HTMLElement | null>(null)
@@ -120,7 +120,7 @@ function selectAction(action: string) {
   emit('close')
 }
 
-function selectItem(item: main.Item) {
+function selectItem(item: Item) {
   emit('selectItem', item)
   emit('close')
 }

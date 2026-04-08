@@ -1,10 +1,10 @@
 <script lang="ts" setup>
 import {computed} from 'vue'
-import {main} from '../../wailsjs/go/models'
+import type {AttributeSchema} from '../api/types'
 import MarkdownEditor from './MarkdownEditor.vue'
 
 const props = defineProps<{
-  attribute: main.AttributeSchema
+  attribute: AttributeSchema
   modelValue: any
   errorMessage?: string
 }>()

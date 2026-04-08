@@ -42,14 +42,24 @@ Key rules:
 go mod tidy
 cd frontend && npm install && cd ..
 
-# Run in development mode (hot reload)
+# Desktop mode (Wails hot reload)
 wails dev
 
-# Build production binary
+# Standalone HTTP server mode
+go run . --serve                # localhost:8080
+go run . --serve --port 3001    # custom port
+
+# Build production desktop binary
 wails build
 ```
 
 The production binary is at `build/bin/omnicollect.app` (macOS).
+
+### Standalone Server Mode
+
+Run `go run . --serve` to start OmniCollect as a standalone HTTP server.
+The REST API is available at `http://localhost:8080/api/v1/` and the
+frontend is served at the root. No Wails desktop shell required.
 
 ## Adding a Collection Type
 
@@ -268,3 +278,7 @@ transfer to another machine.
    selection badges in grid view, Shift-click range select, floating
    glassmorphism action bar, atomic batch delete, CSV export with save
    dialog, bulk module reassignment
+10. **REST API Migration** (010): Decoupled Wails IPC to standard HTTP
+    REST endpoints under /api/v1/, fetch-based frontend client, standalone
+    server mode (--serve), multipart image upload, Content-Disposition
+    downloads for export, TypeScript API types replacing Wails codegen
