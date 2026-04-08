@@ -84,6 +84,43 @@ docker build -t omnicollect .
 docker-compose up   # Runs app + PostgreSQL + MinIO
 ```
 
+### Authentication (Auth0 JWT)
+
+OmniCollect supports optional Auth0 JWT authentication for multi-tenant
+cloud deployments. When configured, all API endpoints (except health)
+require a valid Bearer token. Each user gets an isolated PostgreSQL
+schema provisioned automatically on first login.
+
+**Local mode** (default, no auth): Leave `AUTH_ISSUER_URL` empty. All
+endpoints work without tokens using the `TENANT_ID` env var.
+
+**Cloud mode** (Auth0 enabled): Set the auth env vars and configure
+Auth0 dashboard (API + SPA application).
+
+```bash
+# Backend env vars
+export AUTH_DOMAIN=your-tenant.us.auth0.com
+export AUTH_AUDIENCE=https://api.your-app.com
+export AUTH_ISSUER_URL=https://your-tenant.us.auth0.com/
+export AUTH_CLIENT_ID=your-spa-client-id
+
+# Frontend build-time env vars (in frontend/.env or as build args)
+# VITE_AUTH0_DOMAIN, VITE_AUTH0_CLIENT_ID, VITE_AUTH0_AUDIENCE
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| AUTH_DOMAIN | (empty) | Auth0 tenant domain |
+| AUTH_AUDIENCE | (empty) | Auth0 API audience identifier |
+| AUTH_ISSUER_URL | (empty = no auth) | Token issuer URL; enables JWT when set |
+| AUTH_CLIENT_ID | (empty) | Auth0 SPA client ID |
+
+Auth0 dashboard setup:
+1. Create an **API** with identifier = AUTH_AUDIENCE
+2. Create a **Single Page Application** with callback/logout URLs
+3. Enable **Authorization Code Flow with PKCE**
+4. Configure allowed origins for CORS
+
 ### Data Migration (SQLite to PostgreSQL)
 
 ```bash
@@ -152,8 +189,12 @@ Each attribute can include a `display` object:
 ```
 omnicollect/
   main.go              # Entry point: --serve, --migrate, or Wails desktop
-  config.go            # Environment-based config (DATABASE_URL, S3_*, etc.)
+  config.go            # Environment-based config (DATABASE_URL, S3_*, AUTH_*, etc.)
   app.go               # Core business logic with Store/MediaStore interfaces
+  auth/
+    context.go         # Tenant ID context helpers and sanitization
+    middleware.go      # JWT validation middleware with JWKS caching
+    local.go           # Local-mode middleware (no auth bypass)
   db.go                # Legacy helpers (dbFilePath for backup)
   imaging.go           # Image validation, thumbnail generation (returns bytes)
   backup.go            # ZIP archive export (database + media + modules)
@@ -234,6 +275,8 @@ omnicollect/
 | `github.com/google/uuid` | UUID v4 generation |
 | `github.com/disintegration/imaging` | Image resize/crop |
 | `golang.org/x/image/webp` | WebP format support |
+| `github.com/auth0/go-jwt-middleware/v2` | Auth0 JWT validation middleware |
+| `gopkg.in/go-jose/go-jose.v2` | JWKS key handling for JWT |
 
 ### Frontend
 
@@ -243,6 +286,7 @@ omnicollect/
 | `pinia` | State management |
 | `vue-codemirror` | CodeMirror 6 editor wrapper |
 | `@codemirror/lang-json` | JSON syntax highlighting |
+| `@auth0/auth0-vue` | Auth0 Vue 3 SDK (login, token, session) |
 
 ## Keyboard Shortcuts
 
@@ -339,3 +383,8 @@ transfer to another machine.
     isolation and tsvector FTS, S3-compatible media storage, SQLite-to-PG
     migration tool (--migrate), Docker multi-stage build, docker-compose
     dev stack, health check endpoint, config via environment variables
+13. **JWT Authentication** (013): Auth0-based JWT authentication
+    middleware, JWKS-validating Go middleware with tenant ID extraction
+    from sub claim, auto-provisioning of PostgreSQL tenant schemas,
+    Vue Auth0 SDK integration (AuthGuard, token injection, sign out),
+    local mode bypass for backward compatibility

@@ -42,11 +42,21 @@ func (a *App) InitWithConfig(cfg Config) {
 
 	// Initialize database store
 	if cfg.IsCloudDB() {
-		pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL, cfg.TenantID)
-		if err != nil {
-			log.Fatalf("failed to initialize PostgreSQL: %v", err)
+		if cfg.IsAuthEnabled() {
+			// Auth mode: connect to DB without initializing a fixed tenant.
+			// Tenant schemas are provisioned dynamically by the auth middleware.
+			pgStore, err := storage.NewPostgresStoreNoTenant(cfg.DatabaseURL)
+			if err != nil {
+				log.Fatalf("failed to initialize PostgreSQL: %v", err)
+			}
+			a.store = pgStore
+		} else {
+			pgStore, err := storage.NewPostgresStore(cfg.DatabaseURL, cfg.TenantID)
+			if err != nil {
+				log.Fatalf("failed to initialize PostgreSQL: %v", err)
+			}
+			a.store = pgStore
 		}
-		a.store = pgStore
 	} else {
 		sqliteStore, err := storage.NewSQLiteStore()
 		if err != nil {
@@ -70,13 +80,18 @@ func (a *App) InitWithConfig(cfg Config) {
 		a.mediaStore = localStore
 	}
 
-	// Load modules from store
-	modules, err := a.store.GetModules()
-	if err != nil {
-		log.Fatalf("failed to load module schemas: %v", err)
+	// Load modules from store (skip in auth mode -- modules are per-tenant)
+	if !cfg.IsAuthEnabled() {
+		modules, err := a.store.GetModules()
+		if err != nil {
+			log.Fatalf("failed to load module schemas: %v", err)
+		}
+		a.modules = toMainModules(modules)
+		log.Printf("loaded %d module schema(s)", len(a.modules))
+	} else {
+		a.modules = []ModuleSchema{}
+		log.Printf("auth mode: modules loaded per-tenant on request")
 	}
-	a.modules = toMainModules(modules)
-	log.Printf("loaded %d module schema(s)", len(a.modules))
 }
 
 // startup is called by Wails when the application starts.
@@ -208,8 +223,16 @@ func (a *App) BulkUpdateModule(ids []string, newModuleID string) (BulkUpdateResu
 	return BulkUpdateResult{Updated: updated}, nil
 }
 
-// GetActiveModules returns all module schemas loaded at startup.
+// GetActiveModules returns all module schemas. In auth mode, modules are
+// loaded fresh from the store (per-tenant). In local mode, uses the cached list.
 func (a *App) GetActiveModules() ([]ModuleSchema, error) {
+	if a.config.IsAuthEnabled() {
+		modules, err := a.store.GetModules()
+		if err != nil {
+			return nil, err
+		}
+		return toMainModules(modules), nil
+	}
 	return a.modules, nil
 }
 

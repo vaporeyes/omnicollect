@@ -21,11 +21,21 @@ import type {MenuOption} from './components/ContextMenu.vue'
 import {useToastStore} from './stores/toastStore'
 import {useSelectionStore} from './stores/selectionStore'
 import BulkActionBar from './components/BulkActionBar.vue'
+import {isAuthConfigured} from './auth/plugin'
+import {AuthGuard} from './auth/guard'
+import {useAuth0} from '@auth0/auth0-vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
 const toastStore = useToastStore()
 const selectionStore = useSelectionStore()
+
+// Auth sign-out (only available when Auth0 is configured)
+const authEnabled = isAuthConfigured
+const auth0 = authEnabled ? useAuth0() : null
+function onSignOut() {
+  auth0?.logout({logoutParams: {returnTo: window.location.origin}})
+}
 
 // Bulk action state
 const showBulkDeleteConfirm = ref(false)
@@ -448,6 +458,7 @@ function onSettingsClose() {
 </script>
 
 <template>
+  <component :is="authEnabled ? AuthGuard : 'div'">
   <div class="app-layout">
     <aside class="sidebar animate-slide-up delay-1">
       <h2 class="animate-fade-in delay-2">OmniCollect</h2>
@@ -465,6 +476,7 @@ function onSettingsClose() {
           {{ exporting ? 'Exporting...' : 'Export Backup' }}
         </button>
         <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
+        <button v-if="authEnabled" class="signout-btn" @click="onSignOut">Sign Out</button>
       </div>
     </aside>
 
@@ -640,6 +652,7 @@ function onSettingsClose() {
     />
     <ToastProvider />
   </div>
+  </component>
 </template>
 
 <style>
@@ -739,6 +752,29 @@ body {
 .settings-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+.signout-btn {
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.signout-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent-danger, #e74c3c);
+}
+.auth-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 16px;
+  color: var(--text-muted);
 }
 .main-content {
   flex: 1;

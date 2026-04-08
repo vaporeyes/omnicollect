@@ -6,7 +6,11 @@
       "Bash(bash:*)",
       "Bash(ls /Users/jsh/dev/projects/omnicollect/*.go)",
       "Bash(go test:*)",
-      "Bash(npx vitest:*)"
+      "Bash(npx vitest:*)",
+      "Bash(npm install:*)",
+      "Bash(go build:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

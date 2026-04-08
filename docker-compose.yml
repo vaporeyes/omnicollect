@@ -15,6 +15,11 @@ services:
       S3_REGION: us-east-1
       PORT: "8080"
       TENANT_ID: default
+      # Auth0 JWT authentication (leave empty to disable auth)
+      AUTH_DOMAIN: ""
+      AUTH_AUDIENCE: ""
+      AUTH_ISSUER_URL: ""
+      AUTH_CLIENT_ID: ""
     depends_on:
       postgres:
         condition: service_healthy

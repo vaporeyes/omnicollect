@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 type PostgresStore struct {
 	db           *sql.DB
 	tenantSchema string
+	mu           sync.RWMutex
 }
 
 // NewPostgresStore connects to PostgreSQL and initializes the tenant schema.
@@ -42,6 +44,20 @@ func NewPostgresStore(databaseURL, tenantID string) (*PostgresStore, error) {
 	return store, nil
 }
 
+// NewPostgresStoreNoTenant connects to PostgreSQL without initializing a tenant schema.
+// Used in auth-enabled mode where tenants are provisioned dynamically per request.
+func NewPostgresStoreNoTenant(databaseURL string) (*PostgresStore, error) {
+	db, err := sql.Open("postgres", databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("opening postgres: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("pinging postgres: %w", err)
+	}
+	return &PostgresStore{db: db, tenantSchema: "public"}, nil
+}
+
 // Ping checks database connectivity.
 func (s *PostgresStore) Ping(ctx interface{ Deadline() (time.Time, bool) }) error {
 	return s.db.Ping()
@@ -55,6 +71,28 @@ func (s *PostgresStore) DB() *sql.DB {
 // TenantSchema returns the schema name for this tenant.
 func (s *PostgresStore) TenantSchema() string {
 	return s.tenantSchema
+}
+
+// SetTenantSchema changes the active tenant schema for subsequent operations.
+// Used by auth middleware to scope requests to the authenticated user's tenant.
+func (s *PostgresStore) SetTenantSchema(schema string) {
+	s.mu.Lock()
+	s.tenantSchema = schema
+	s.mu.Unlock()
+}
+
+// ProvisionTenant creates the schema and DDL tables for a tenant if they
+// do not already exist. Idempotent -- safe to call multiple times.
+func (s *PostgresStore) ProvisionTenant(tenantID string) error {
+	saved := s.tenantSchema
+	s.mu.Lock()
+	s.tenantSchema = tenantID
+	s.mu.Unlock()
+	err := s.initTenantSchema()
+	s.mu.Lock()
+	s.tenantSchema = saved
+	s.mu.Unlock()
+	return err
 }
 
 func sanitizeTenantID(id string) string {

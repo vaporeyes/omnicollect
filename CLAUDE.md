@@ -31,19 +31,26 @@ settings.go      # Wails-bound settings methods delegating to Store
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
 Dockerfile       # Multi-stage build (Go + Node -> alpine)
 docker-compose.yml # Dev stack (app + postgres + minio)
+auth/
+  context.go   # Tenant ID context helpers (SetTenantID, TenantIDFromContext, SanitizeTenantID)
+  middleware.go # JWT validation middleware (Auth0 JWKS), ExemptPaths, provisioning cache
+  local.go     # Local-mode middleware (fixed tenant ID bypass)
 storage/
   db.go          # Store interface (database abstraction)
   media.go       # MediaStore interface (object storage abstraction)
   sqlite.go      # SQLiteStore: local SQLite with FTS5
   sqlite_test.go # Storage layer unit tests (in-memory SQLite)
-  postgres.go    # PostgresStore: PostgreSQL with schema-per-tenant, tsvector
+  postgres.go    # PostgresStore: PostgreSQL with schema-per-tenant, tsvector, ProvisionTenant
   local.go       # LocalMediaStore: local filesystem
   s3.go          # S3MediaStore: S3-compatible object store
   migrate.go     # SQLite-to-PostgreSQL migration tool
   testdata/      # Test fixtures (test-module.json, test-image.jpg)
 frontend/src/
+  auth/
+    plugin.ts    # Auth0 Vue plugin config + token injection wiring
+    guard.ts     # AuthGuard component (loading/redirect/render)
   api/
-    client.ts    # Centralized fetch-based HTTP client (base URL, typed helpers)
+    client.ts    # Centralized fetch-based HTTP client with optional Bearer token
     types.ts     # TypeScript interfaces mirroring Go structs (replaces Wails bindings)
   stores/        # Pinia: moduleStore, collectionStore, selectionStore,
                  #   toastStore
@@ -105,6 +112,12 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   and `MarkdownRenderer.vue` (marked + DOMPurify) in detail views.
   Global `.prose` class in `style.css` styles rendered Markdown.
   Dependencies: `@codemirror/lang-markdown`, `marked`, `dompurify`
+- Auth: `auth/` package handles JWT validation (cloud) and local bypass.
+  When AUTH_ISSUER_URL is set, `NewJWTMiddleware` validates Auth0 tokens,
+  extracts `sub` claim, sanitizes to tenant ID (`auth0|abc` -> `tenant_auth0_abc`),
+  provisions schema on first request. When empty, `NewLocalTenantMiddleware`
+  injects TENANT_ID env var directly. Frontend uses `@auth0/auth0-vue` SDK
+  with AuthGuard wrapper and Bearer token injection in `api/client.ts`.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
   bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
@@ -139,7 +152,11 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 | S3_SECRET_KEY | (empty) | S3 secret key |
 | S3_REGION | us-east-1 | S3 region |
 | PORT | 8080 | HTTP server listen port |
-| TENANT_ID | default | PostgreSQL schema-per-tenant isolation |
+| TENANT_ID | default | PostgreSQL schema-per-tenant isolation (local mode) |
+| AUTH_DOMAIN | (empty) | Auth0 tenant domain |
+| AUTH_AUDIENCE | (empty) | Auth0 API audience identifier |
+| AUTH_ISSUER_URL | (empty = no auth) | Auth0 issuer URL; enables JWT auth when set |
+| AUTH_CLIENT_ID | (empty) | Auth0 SPA client ID (frontend build-time) |
 
 ## Data Locations
 
@@ -171,6 +188,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - PostgreSQL (cloud) / SQLite (local fallback); S3-compatible object store (cloud) / local filesystem (fallback) (011-cloud-infrastructure)
 - Go 1.25+ (backend tests), TypeScript + Vue 3 (frontend tests) + Go `testing` + `net/http/httptest` (backend), Vitest (frontend) (012-test-coverage)
 - Temporary SQLite `:memory:` databases for test isolation (012-test-coverage)
+- Go 1.25+ (backend middleware), TypeScript + Vue 3 (frontend Auth0 SDK) + `github.com/auth0/go-jwt-middleware/v2` + `gopkg.in/go-jose/go-jose.v2` (Go JWT validation), `@auth0/auth0-vue` (frontend SDK) (013-jwt-auth)
+- PostgreSQL schema-per-tenant (existing); tenant provisioning reuses existing PostgresStore.initTenantSchema() (013-jwt-auth)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

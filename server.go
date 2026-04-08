@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"omnicollect/auth"
 	"omnicollect/storage"
 )
 
@@ -72,13 +73,64 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// tenantScopeMiddleware sets the PostgresStore search_path to the tenant
+// extracted from the request context by the auth middleware.
+func (s *Server) tenantScopeMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenantID := auth.TenantIDFromContext(r.Context())
+		if tenantID != "" {
+			if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+				pgStore.SetTenantSchema(tenantID)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// buildHandler constructs the full middleware chain around the mux.
+// Auth middleware is applied conditionally based on config.
+func (s *Server) buildHandler() http.Handler {
+	cfg := s.app.config
+
+	// Build the provisioner for PostgresStore
+	var provisioner auth.TenantProvisioner
+	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+		provisioner = func(tenantID string) error {
+			return pgStore.ProvisionTenant(tenantID)
+		}
+	}
+
+	// Inner handler: tenant scoping + mux
+	inner := s.tenantScopeMiddleware(s.mux)
+
+	var handler http.Handler
+	if cfg.IsAuthEnabled() {
+		log.Printf("Auth enabled: issuer=%s audience=%s", cfg.AuthIssuer, cfg.AuthAudience)
+		jwtMiddleware := auth.NewJWTMiddleware(cfg.AuthIssuer, cfg.AuthAudience, provisioner)
+		protected := jwtMiddleware(inner)
+
+		// Exempt health check and OPTIONS from auth
+		handler = auth.ExemptPaths(
+			[]string{"/api/v1/health"},
+			protected,
+			inner,
+		)
+	} else {
+		log.Printf("Auth disabled: using local tenant %q", cfg.TenantID)
+		localMiddleware := auth.NewLocalTenantMiddleware(cfg.TenantID, provisioner)
+		handler = localMiddleware(inner)
+	}
+
+	return corsMiddleware(handler)
 }
 
 // Start begins listening on the given port. Port 0 picks a random available port.
@@ -89,7 +141,7 @@ func (s *Server) Start(port int) (net.Listener, error) {
 		return nil, fmt.Errorf("starting server: %w", err)
 	}
 	log.Printf("HTTP server listening on %s", ln.Addr().String())
-	go http.Serve(ln, corsMiddleware(s.mux))
+	go http.Serve(ln, s.buildHandler())
 	return ln, nil
 }
 
@@ -97,5 +149,5 @@ func (s *Server) Start(port int) (net.Listener, error) {
 func (s *Server) ListenAndServe(port int) error {
 	addr := fmt.Sprintf(":%d", port)
 	log.Printf("HTTP server listening on %s", addr)
-	return http.ListenAndServe(addr, corsMiddleware(s.mux))
+	return http.ListenAndServe(addr, s.buildHandler())
 }
