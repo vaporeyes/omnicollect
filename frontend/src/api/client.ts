@@ -1,6 +1,8 @@
 // ABOUTME: Centralized fetch-based HTTP client for the OmniCollect REST API.
 // ABOUTME: Supports optional Auth0 Bearer token injection via setTokenGetter.
 
+import type {TagCount} from './types'
+
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || ''
 
 // Token getter function set by the Auth0 plugin when auth is configured.
@@ -80,6 +82,18 @@ export async function postFile<T>(path: string, file: File, fieldName = 'image')
   form.append(fieldName, file)
   const res = await fetch(BASE_URL + path, {method: 'POST', headers: auth, body: form})
   return handleResponse<T>(res)
+}
+
+export async function getAllTags(): Promise<TagCount[]> {
+  return get<TagCount[]>('/api/v1/tags')
+}
+
+export async function renameTag(oldName: string, newName: string): Promise<{updated: number}> {
+  return post<{updated: number}>('/api/v1/tags/rename', {oldName, newName})
+}
+
+export async function deleteTag(name: string): Promise<void> {
+  return del('/api/v1/tags/' + encodeURIComponent(name))
 }
 
 export async function downloadFile(path: string, body?: any): Promise<void> {

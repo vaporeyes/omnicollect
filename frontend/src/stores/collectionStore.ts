@@ -17,6 +17,7 @@ export const useCollectionStore = defineStore('collection', () => {
   const activeModuleId = ref('')
   const searchQuery = ref('')
   const activeFilters = ref<Record<string, AttributeFilter[]>>({})
+  const activeTags = ref<string[]>([])
 
   function serializeFilters(): string {
     const all: AttributeFilter[] = []
@@ -32,6 +33,7 @@ export const useCollectionStore = defineStore('collection', () => {
     if (activeModuleId.value) params.set('moduleId', activeModuleId.value)
     const filters = serializeFilters()
     if (filters) params.set('filters', filters)
+    if (activeTags.value.length > 0) params.set('tags', JSON.stringify(activeTags.value))
     const qs = params.toString()
     return '/api/v1/items' + (qs ? '?' + qs : '')
   }
@@ -76,9 +78,15 @@ export const useCollectionStore = defineStore('collection', () => {
     return await api.get<Item[]>('/api/v1/items?query=' + encodeURIComponent(query))
   }
 
+  function setTags(tags: string[]) {
+    activeTags.value = tags
+    fetchItems()
+  }
+
   function setFilter(moduleId: string) {
     activeModuleId.value = moduleId
     activeFilters.value = {}
+    activeTags.value = []
     fetchItems()
   }
 
@@ -98,8 +106,8 @@ export const useCollectionStore = defineStore('collection', () => {
   }
 
   return {
-    items, loading, error, activeModuleId, searchQuery, activeFilters,
+    items, loading, error, activeModuleId, searchQuery, activeFilters, activeTags,
     fetchItems, saveItem, deleteItem, searchAllItems,
-    setFilter, setSearch, setActiveFilters, clearFilters,
+    setFilter, setSearch, setActiveFilters, clearFilters, setTags,
   }
 })

@@ -30,6 +30,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null
 const quickActions = [
   {label: 'Add New Item', keywords: ['new', 'add', 'create'], action: 'newItem'},
   {label: 'Create New Schema', keywords: ['new', 'schema', 'create'], action: 'newSchema'},
+  {label: 'Manage Tags', keywords: ['tags', 'tag', 'manage', 'rename', 'delete'], action: 'manageTags'},
   {label: 'Open Settings', keywords: ['settings', 'preferences'], action: 'openSettings'},
   {label: 'Export Backup', keywords: ['backup', 'export'], action: 'exportBackup'},
 ]

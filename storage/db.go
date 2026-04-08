@@ -9,9 +9,16 @@ type Item struct {
 	Title         string                 `json:"title"`
 	PurchasePrice *float64               `json:"purchasePrice"`
 	Images        []string               `json:"images"`
+	Tags          []string               `json:"tags"`
 	Attributes    map[string]any         `json:"attributes"`
 	CreatedAt     string                 `json:"createdAt"`
 	UpdatedAt     string                 `json:"updatedAt"`
+}
+
+// TagCount holds a tag name and the number of items using it.
+type TagCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 // ModuleSchema defines a collection type with its attribute definitions.
@@ -43,13 +50,16 @@ type DisplayHints struct {
 // Store defines all database operations for items, modules, and settings.
 // Implementations: SQLiteStore (local mode) and PostgresStore (cloud mode).
 type Store interface {
-	QueryItems(query, moduleID, filtersJSON string) ([]Item, error)
+	QueryItems(query, moduleID, filtersJSON, tagsJSON string) ([]Item, error)
 	InsertItem(item Item) (Item, error)
 	UpdateItem(item Item) (Item, error)
 	DeleteItem(id string) error
 	DeleteItems(ids []string) (int64, error)
 	BulkUpdateModule(ids []string, newModuleID string) (int64, error)
 	ExportItemsCSV(ids []string, modules []ModuleSchema) (string, error)
+	GetAllTags() ([]TagCount, error)
+	RenameTag(oldName, newName string) (int64, error)
+	DeleteTag(name string) (int64, error)
 	GetModules() ([]ModuleSchema, error)
 	SaveModule(schema ModuleSchema) error
 	LoadModuleFile(id string) (string, error)

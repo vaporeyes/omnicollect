@@ -34,6 +34,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/v1/items/batch-delete", s.handleDeleteItems)
 	s.mux.HandleFunc("POST /api/v1/items/batch-update-module", s.handleBulkUpdateModule)
 
+	// Tags
+	s.mux.HandleFunc("GET /api/v1/tags", s.handleGetAllTags)
+	s.mux.HandleFunc("POST /api/v1/tags/rename", s.handleRenameTag)
+	s.mux.HandleFunc("DELETE /api/v1/tags/{name}", s.handleDeleteTag)
+
 	// Modules
 	s.mux.HandleFunc("GET /api/v1/modules", s.handleGetModules)
 	s.mux.HandleFunc("POST /api/v1/modules", s.handleSaveModule)

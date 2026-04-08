@@ -9,6 +9,7 @@ type Item struct {
 	Title         string                 `json:"title"`
 	PurchasePrice *float64               `json:"purchasePrice"`
 	Images        []string               `json:"images"`
+	Tags          []string               `json:"tags"`
 	Attributes    map[string]any `json:"attributes"`
 	CreatedAt     string                 `json:"createdAt"`
 	UpdatedAt     string                 `json:"updatedAt"`

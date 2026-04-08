@@ -61,7 +61,8 @@ frontend/src/
                  #   ItemDetail, SettingsPage, ToastProvider,
                  #   ContextMenu, CommandPalette, FilterBar,
                  #   MarkdownEditor, MarkdownRenderer,
-                 #   BulkActionBar
+                 #   BulkActionBar, TagInput, TagFilter,
+                 #   TagManager
 ```
 
 ## Commands
@@ -104,9 +105,15 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - Faceted filtering via `FilterBar.vue`: collapsible bar generated from
   active module schema; enum pills (multi-select OR), boolean tri-state
   toggles (off/true/false), inline number range min/max inputs
-- `GetItems(query, moduleID, filtersJSON)` accepts JSON filter payload;
+- `GetItems(query, moduleID, filtersJSON, tagsJSON)` accepts JSON filter payload;
   backend uses `json_extract()` for attribute filters, direct column for
   `purchasePrice`; `collectionStore.activeFilters` manages filter state
+- Cross-collection tags: JSON array on items (`tags TEXT` SQLite / `tags JSONB` PG).
+  Tags normalized lowercase on save, max 50 chars. Store methods: `GetAllTags`,
+  `RenameTag`, `DeleteTag`. SQLite filter: `json_each` + EXISTS; PG: `?|` + GIN.
+  Frontend: `TagInput.vue` (form input with autocomplete), `TagFilter.vue`
+  (clickable chips above collection views), `TagManager.vue` (rename/delete).
+  Tags included in FTS5/tsvector search index and CSV export.
 - Markdown support: `widget: "textarea"` schema attributes use
   `MarkdownEditor.vue` (CodeMirror + `@codemirror/lang-markdown`) in forms
   and `MarkdownRenderer.vue` (marked + DOMPurify) in detail views.
@@ -127,11 +134,14 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/api/v1/items` | GET | List/search items with query, moduleId, filters params |
+| `/api/v1/items` | GET | List/search items with query, moduleId, filters, tags params |
 | `/api/v1/items` | POST | Create or update an item |
 | `/api/v1/items/{id}` | DELETE | Delete a single item |
 | `/api/v1/items/batch-delete` | POST | Atomic batch delete |
 | `/api/v1/items/batch-update-module` | POST | Bulk module reassignment |
+| `/api/v1/tags` | GET | List all tags with item counts |
+| `/api/v1/tags/rename` | POST | Rename tag across all items |
+| `/api/v1/tags/{name}` | DELETE | Remove tag from all items |
 | `/api/v1/modules` | GET | List active module schemas |
 | `/api/v1/modules` | POST | Save custom module schema |
 | `/api/v1/modules/{id}/file` | GET | Load module schema JSON |
@@ -190,6 +200,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - Temporary SQLite `:memory:` databases for test isolation (012-test-coverage)
 - Go 1.25+ (backend middleware), TypeScript + Vue 3 (frontend Auth0 SDK) + `github.com/auth0/go-jwt-middleware/v2` + `gopkg.in/go-jose/go-jose.v2` (Go JWT validation), `@auth0/auth0-vue` (frontend SDK) (013-jwt-auth)
 - PostgreSQL schema-per-tenant (existing); tenant provisioning reuses existing PostgresStore.initTenantSchema() (013-jwt-auth)
+- Go 1.25+ (backend -- Store interface + handlers), TypeScript + Vue 3 (frontend) + Existing stack (no new dependencies) (014-cross-collection-tags)
+- Tags stored as JSON array on items (`tags TEXT/JSONB`); both SQLite and PostgreSQL Store implementations updated (014-cross-collection-tags)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

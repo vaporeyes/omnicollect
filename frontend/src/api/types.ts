@@ -7,9 +7,15 @@ export interface Item {
   title: string
   purchasePrice: number | null
   images: string[]
+  tags: string[]
   attributes: Record<string, any>
   createdAt: string
   updatedAt: string
+}
+
+export interface TagCount {
+  name: string
+  count: number
 }
 
 export interface ModuleSchema {

@@ -236,6 +236,9 @@ omnicollect/
         CommandPalette.vue   # Spotlight-style search overlay (Cmd/Ctrl+K)
         ContextMenu.vue      # Right-click context menu
         ToastProvider.vue    # Global toast notifications
+        TagInput.vue         # Tag input with autocomplete chips
+        TagFilter.vue        # Tag filter chips for collection views
+        TagManager.vue       # Tag rename/delete management panel
       stores/
         toastStore.ts        # Toast notification queue
     wailsjs/           # Auto-generated Wails bindings (do not edit)
@@ -388,3 +391,10 @@ transfer to another machine.
     from sub claim, auto-provisioning of PostgreSQL tenant schemas,
     Vue Auth0 SDK integration (AuthGuard, token injection, sign out),
     local mode bypass for backward compatibility
+14. **Cross-Collection Tags** (014): Free-form tag system stored as JSON
+    arrays on items (SQLite TEXT / PostgreSQL JSONB with GIN index). Tag
+    input with autocomplete, clickable tag filter chips above collection
+    views (OR logic, cross-module), tag management panel (rename/delete).
+    Tags included in FTS5/tsvector search index and CSV export. REST
+    endpoints: GET /api/v1/tags, POST /api/v1/tags/rename,
+    DELETE /api/v1/tags/{name}

@@ -119,12 +119,14 @@ func (s *PostgresStore) initTenantSchema() error {
 			title TEXT NOT NULL,
 			purchase_price DOUBLE PRECISION,
 			images JSONB NOT NULL DEFAULT '[]',
+			tags JSONB NOT NULL DEFAULT '[]',
 			attributes JSONB NOT NULL DEFAULT '{}',
 			search_vector tsvector,
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_module_id ON items(module_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_tags ON items USING GIN(tags)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_search_vector ON items USING GIN(search_vector)`,
 		`CREATE TABLE IF NOT EXISTS modules (
 			id TEXT PRIMARY KEY,
@@ -146,17 +148,23 @@ func (s *PostgresStore) initTenantSchema() error {
 		}
 	}
 
-	// Create or replace the search vector trigger function
+	// Create or replace the search vector trigger function.
+	// Includes attribute values and tag values in the search index.
 	triggerFn := fmt.Sprintf(`
 		CREATE OR REPLACE FUNCTION %s.items_search_update() RETURNS trigger AS $$
 		DECLARE
 			attr_text TEXT;
+			tags_text TEXT;
 		BEGIN
 			SELECT string_agg(value::text, ' ')
 			INTO attr_text
 			FROM jsonb_each_text(NEW.attributes);
 
-			NEW.search_vector := to_tsvector('english', coalesce(NEW.title, '') || ' ' || coalesce(attr_text, ''));
+			SELECT string_agg(t::text, ' ')
+			INTO tags_text
+			FROM jsonb_array_elements_text(NEW.tags) AS t;
+
+			NEW.search_vector := to_tsvector('english', coalesce(NEW.title, '') || ' ' || coalesce(attr_text, '') || ' ' || coalesce(tags_text, ''));
 			RETURN NEW;
 		END;
 		$$ LANGUAGE plpgsql`, s.tenantSchema)
@@ -177,6 +185,10 @@ func (s *PostgresStore) initTenantSchema() error {
 		return fmt.Errorf("creating trigger: %w", err)
 	}
 
+	// Migration: add tags column to existing databases that lack it
+	s.db.Exec(fmt.Sprintf(`ALTER TABLE %s.items ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'`, s.tenantSchema))
+	s.db.Exec(fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_items_tags ON %s.items USING GIN(tags)`, s.tenantSchema))
+
 	return nil
 }
 
@@ -185,8 +197,9 @@ func (s *PostgresStore) setSearchPath() error {
 	return err
 }
 
-// QueryItems retrieves items with optional tsvector search, module filter, and JSONB attribute filters.
-func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON string) ([]Item, error) {
+// QueryItems retrieves items with optional tsvector search, module filter,
+// JSONB attribute filters, and tag filters.
+func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON string, tagsJSON string) ([]Item, error) {
 	if err := s.setSearchPath(); err != nil {
 		return nil, err
 	}
@@ -199,7 +212,7 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 	var rows *sql.Rows
 
 	if query != "" {
-		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.attributes, i.created_at, i.updated_at
+		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.tags, i.attributes, i.created_at, i.updated_at
 			FROM items i, plainto_tsquery('english', $1) q
 			WHERE i.search_vector @@ q`
 		queryArgs := []any{query}
@@ -216,11 +229,18 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 			baseSQL += " AND " + c
 		}
 		queryArgs = append(queryArgs, filterArgs...)
+
+		tagClause, tagArgs := buildPgTagClause(tagsJSON, "i", &paramIdx)
+		if tagClause != "" {
+			baseSQL += " AND " + tagClause
+			queryArgs = append(queryArgs, tagArgs...)
+		}
+
 		baseSQL += " ORDER BY ts_rank(i.search_vector, q) DESC"
 
 		rows, err = s.db.Query(baseSQL, queryArgs...)
 	} else {
-		baseSQL := `SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at
+		baseSQL := `SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at
 			FROM items`
 		var queryArgs []any
 		var whereParts []string
@@ -235,6 +255,12 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 		filterClauses, filterArgs := buildPgFilterClauses(filters, "", &paramIdx)
 		whereParts = append(whereParts, filterClauses...)
 		queryArgs = append(queryArgs, filterArgs...)
+
+		tagClause, tagArgs := buildPgTagClause(tagsJSON, "", &paramIdx)
+		if tagClause != "" {
+			whereParts = append(whereParts, tagClause)
+			queryArgs = append(queryArgs, tagArgs...)
+		}
 
 		if len(whereParts) > 0 {
 			baseSQL += " WHERE " + strings.Join(whereParts, " AND ")
@@ -263,9 +289,16 @@ func (s *PostgresStore) InsertItem(item Item) (Item, error) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 
+	item.Tags = normalizeTags(item.Tags)
+
 	imagesJSON, err := json.Marshal(item.Images)
 	if err != nil {
 		return Item{}, fmt.Errorf("marshaling images: %w", err)
+	}
+
+	tagsJSON, err := json.Marshal(item.Tags)
+	if err != nil {
+		return Item{}, fmt.Errorf("marshaling tags: %w", err)
 	}
 
 	attrsJSON, err := json.Marshal(item.Attributes)
@@ -274,10 +307,10 @@ func (s *PostgresStore) InsertItem(item Item) (Item, error) {
 	}
 
 	_, err = s.db.Exec(
-		`INSERT INTO items (id, module_id, title, purchase_price, images, attributes, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO items (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		item.ID, item.ModuleID, item.Title, item.PurchasePrice,
-		string(imagesJSON), string(attrsJSON), item.CreatedAt, item.UpdatedAt,
+		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.CreatedAt, item.UpdatedAt,
 	)
 	if err != nil {
 		return Item{}, fmt.Errorf("inserting item: %w", err)
@@ -294,9 +327,16 @@ func (s *PostgresStore) UpdateItem(item Item) (Item, error) {
 
 	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
+	item.Tags = normalizeTags(item.Tags)
+
 	imagesJSON, err := json.Marshal(item.Images)
 	if err != nil {
 		return Item{}, fmt.Errorf("marshaling images: %w", err)
+	}
+
+	tagsJSON, err := json.Marshal(item.Tags)
+	if err != nil {
+		return Item{}, fmt.Errorf("marshaling tags: %w", err)
 	}
 
 	attrsJSON, err := json.Marshal(item.Attributes)
@@ -305,10 +345,10 @@ func (s *PostgresStore) UpdateItem(item Item) (Item, error) {
 	}
 
 	result, err := s.db.Exec(
-		`UPDATE items SET module_id=$1, title=$2, purchase_price=$3, images=$4, attributes=$5, updated_at=$6
-		 WHERE id=$7`,
+		`UPDATE items SET module_id=$1, title=$2, purchase_price=$3, images=$4, tags=$5, attributes=$6, updated_at=$7
+		 WHERE id=$8`,
 		item.ModuleID, item.Title, item.PurchasePrice,
-		string(imagesJSON), string(attrsJSON), item.UpdatedAt, item.ID,
+		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.UpdatedAt, item.ID,
 	)
 	if err != nil {
 		return Item{}, fmt.Errorf("updating item: %w", err)
@@ -433,7 +473,7 @@ func (s *PostgresStore) ExportItemsCSV(ids []string, modules []ModuleSchema) (st
 	}
 
 	rows, err := s.db.Query(
-		"SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
+		"SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
 		args...,
 	)
 	if err != nil {
@@ -600,7 +640,106 @@ func (s *PostgresStore) Close() error {
 	return s.db.Close()
 }
 
+// GetAllTags returns all distinct tags with item counts.
+func (s *PostgresStore) GetAllTags() ([]TagCount, error) {
+	if err := s.setSearchPath(); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Query(
+		`SELECT tag, COUNT(*) FROM items, jsonb_array_elements_text(tags) AS tag GROUP BY tag ORDER BY tag`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []TagCount
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.Name, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scanning tag: %w", err)
+		}
+		tags = append(tags, tc)
+	}
+	if tags == nil {
+		tags = []TagCount{}
+	}
+	return tags, rows.Err()
+}
+
+// RenameTag renames a tag across all items using JSONB operators.
+func (s *PostgresStore) RenameTag(oldName, newName string) (int64, error) {
+	newName = strings.ToLower(strings.TrimSpace(newName))
+	if newName == "" {
+		return 0, fmt.Errorf("new tag name cannot be empty")
+	}
+	if len(newName) > 50 {
+		newName = newName[:50]
+	}
+
+	if err := s.setSearchPath(); err != nil {
+		return 0, err
+	}
+
+	result, err := s.db.Exec(
+		`UPDATE items SET tags = (tags - $1) || to_jsonb($2::text) WHERE tags ? $1`,
+		oldName, newName,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("renaming tag: %w", err)
+	}
+
+	count, _ := result.RowsAffected()
+	return count, nil
+}
+
+// DeleteTag removes a tag from all items using JSONB operators.
+func (s *PostgresStore) DeleteTag(name string) (int64, error) {
+	if err := s.setSearchPath(); err != nil {
+		return 0, err
+	}
+
+	result, err := s.db.Exec(
+		`UPDATE items SET tags = tags - $1 WHERE tags ? $1`,
+		name,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("deleting tag: %w", err)
+	}
+
+	count, _ := result.RowsAffected()
+	return count, nil
+}
+
 // --- PostgreSQL-specific helpers ---
+
+// buildPgTagClause creates a WHERE clause for tag filtering using JSONB ?| operator.
+func buildPgTagClause(tagsJSON string, tableAlias string, paramIdx *int) (string, []any) {
+	if tagsJSON == "" {
+		return "", nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil || len(tags) == 0 {
+		return "", nil
+	}
+
+	prefix := ""
+	if tableAlias != "" {
+		prefix = tableAlias + "."
+	}
+
+	placeholders := make([]string, len(tags))
+	args := make([]any, len(tags))
+	for i, t := range tags {
+		placeholders[i] = fmt.Sprintf("$%d", *paramIdx)
+		args[i] = t
+		*paramIdx++
+	}
+
+	clause := fmt.Sprintf("%stags ?| array[%s]", prefix, strings.Join(placeholders, ","))
+	return clause, args
+}
 
 func buildPgFilterClauses(filters []attrFilter, tableAlias string, paramIdx *int) ([]string, []any) {
 	var clauses []string
@@ -659,11 +798,11 @@ func scanPgItems(rows *sql.Rows) ([]Item, error) {
 	var items []Item
 	for rows.Next() {
 		var item Item
-		var imagesJSON, attrsJSON string
+		var imagesJSON, tagsJSON, attrsJSON string
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(
 			&item.ID, &item.ModuleID, &item.Title, &item.PurchasePrice,
-			&imagesJSON, &attrsJSON, &createdAt, &updatedAt,
+			&imagesJSON, &tagsJSON, &attrsJSON, &createdAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning item row: %w", err)
@@ -674,6 +813,9 @@ func scanPgItems(rows *sql.Rows) ([]Item, error) {
 
 		if err := json.Unmarshal([]byte(imagesJSON), &item.Images); err != nil {
 			item.Images = []string{}
+		}
+		if err := json.Unmarshal([]byte(tagsJSON), &item.Tags); err != nil {
+			item.Tags = []string{}
 		}
 		if err := json.Unmarshal([]byte(attrsJSON), &item.Attributes); err != nil {
 			item.Attributes = map[string]any{}

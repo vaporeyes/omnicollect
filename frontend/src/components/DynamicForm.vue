@@ -1,8 +1,10 @@
 <script lang="ts" setup>
-import {reactive, ref, watch, computed} from 'vue'
-import type {Item, ModuleSchema} from '../api/types'
+import {reactive, ref, watch, computed, onMounted} from 'vue'
+import type {Item, ModuleSchema, TagCount} from '../api/types'
+import {getAllTags} from '../api/client'
 import FormField from './FormField.vue'
 import ImageAttach from './ImageAttach.vue'
+import TagInput from './TagInput.vue'
 
 const props = defineProps<{
   schema: ModuleSchema
@@ -21,16 +23,23 @@ const baseFields = reactive({
 
 const attributes = reactive<Record<string, any>>({})
 const itemImages = ref<string[]>([])
+const itemTags = ref<string[]>([])
+const allTags = ref<TagCount[]>([])
 const validationErrors = reactive<Record<string, string>>({})
 
 const isEditing = computed(() => !!props.item?.id)
 
+onMounted(async () => {
+  try { allTags.value = await getAllTags() } catch { /* ignore */ }
+})
+
 // Initialize form when item or schema changes
 watch(() => [props.item, props.schema], () => {
-  // Reset base fields and images
+  // Reset base fields, images, and tags
   baseFields.title = props.item?.title ?? ''
   baseFields.purchasePrice = props.item?.purchasePrice ?? null
   itemImages.value = props.item?.images ? [...props.item.images] : []
+  itemTags.value = props.item?.tags ? [...props.item.tags] : []
 
   // Reset attributes from item or defaults
   const itemAttrs = props.item?.attributes ?? {}
@@ -81,6 +90,7 @@ function onSubmit() {
     title: baseFields.title.trim(),
     purchasePrice: baseFields.purchasePrice,
     images: itemImages.value,
+    tags: itemTags.value,
     attributes: {...attributes},
     createdAt: props.item?.createdAt ?? '',
     updatedAt: '',
@@ -134,6 +144,12 @@ function onSubmit() {
       <ImageAttach
         :images="itemImages"
         @update:images="val => itemImages = val"
+      />
+
+      <!-- Tags -->
+      <TagInput
+        v-model="itemTags"
+        :allTags="allTags"
       />
 
       <div class="form-actions">

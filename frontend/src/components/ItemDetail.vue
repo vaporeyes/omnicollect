@@ -157,6 +157,11 @@ function nextImage() {
           {{ formatPrice(item.purchasePrice) }}
         </div>
 
+        <!-- Tags -->
+        <div v-if="item.tags && item.tags.length > 0" class="tag-display">
+          <span v-for="tag in item.tags" :key="tag" class="detail-tag-chip">{{ tag }}</span>
+        </div>
+
         <!-- Divider -->
         <hr class="section-rule" />
 
@@ -581,5 +586,23 @@ function nextImage() {
 }
 .confirm-delete-btn:hover {
   background: #b91c1c;
+}
+
+/* Tag display chips */
+.tag-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-md);
+}
+.detail-tag-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  background: var(--accent-blue-light, rgba(59,130,246,0.12));
+  color: var(--accent-blue);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Outfit', sans-serif;
 }
 </style>

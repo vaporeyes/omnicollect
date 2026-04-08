@@ -114,6 +114,9 @@ func (a *App) SaveItem(item Item) (Item, error) {
 	if item.Images == nil {
 		item.Images = []string{}
 	}
+	if item.Tags == nil {
+		item.Tags = []string{}
+	}
 	if item.Attributes == nil {
 		item.Attributes = map[string]any{}
 	}
@@ -133,10 +136,11 @@ func (a *App) SaveItem(item Item) (Item, error) {
 }
 
 // GetItems retrieves items with optional full-text search, module filter,
-// and attribute filters. Pass empty strings to skip any filter dimension.
+// attribute filters, and tag filters. Pass empty strings to skip any filter.
 // filtersJSON is a JSON array of {field, op, value/values} objects.
-func (a *App) GetItems(query string, moduleID string, filtersJSON string) ([]Item, error) {
-	items, err := a.store.QueryItems(query, moduleID, filtersJSON)
+// tagsJSON is a JSON array of tag name strings.
+func (a *App) GetItems(query string, moduleID string, filtersJSON string, tagsJSON string) ([]Item, error) {
+	items, err := a.store.QueryItems(query, moduleID, filtersJSON, tagsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -361,6 +365,7 @@ func toStorageItem(item Item) storage.Item {
 		Title:         item.Title,
 		PurchasePrice: item.PurchasePrice,
 		Images:        item.Images,
+		Tags:          item.Tags,
 		Attributes:    item.Attributes,
 		CreatedAt:     item.CreatedAt,
 		UpdatedAt:     item.UpdatedAt,
@@ -374,6 +379,7 @@ func fromStorageItem(item storage.Item) Item {
 		Title:         item.Title,
 		PurchasePrice: item.PurchasePrice,
 		Images:        item.Images,
+		Tags:          item.Tags,
 		Attributes:    item.Attributes,
 		CreatedAt:     item.CreatedAt,
 		UpdatedAt:     item.UpdatedAt,

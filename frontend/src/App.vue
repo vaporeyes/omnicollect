@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
 import * as api from './api/client'
-import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult} from './api/types'
+import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult, TagCount} from './api/types'
 import {applyPolineTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
@@ -21,6 +21,8 @@ import type {MenuOption} from './components/ContextMenu.vue'
 import {useToastStore} from './stores/toastStore'
 import {useSelectionStore} from './stores/selectionStore'
 import BulkActionBar from './components/BulkActionBar.vue'
+import TagFilter from './components/TagFilter.vue'
+import TagManager from './components/TagManager.vue'
 import {isAuthConfigured} from './auth/plugin'
 import {AuthGuard} from './auth/guard'
 import {useAuth0} from '@auth0/auth0-vue'
@@ -35,6 +37,36 @@ const authEnabled = isAuthConfigured
 const auth0 = authEnabled ? useAuth0() : null
 function onSignOut() {
   auth0?.logout({logoutParams: {returnTo: window.location.origin}})
+}
+
+// Tag state
+const allTags = ref<TagCount[]>([])
+const showTagManager = ref(false)
+
+async function refreshTags() {
+  try { allTags.value = await api.getAllTags() } catch { /* ignore */ }
+}
+
+async function onTagRename(payload: {oldName: string, newName: string}) {
+  try {
+    await api.renameTag(payload.oldName, payload.newName)
+    await refreshTags()
+    await collectionStore.fetchItems()
+    toastStore.show(`Tag renamed to "${payload.newName}"`, 'success')
+  } catch (e: any) {
+    toastStore.show(`Rename failed: ${e?.message ?? e}`, 'error')
+  }
+}
+
+async function onTagDelete(name: string) {
+  try {
+    await api.deleteTag(name)
+    await refreshTags()
+    await collectionStore.fetchItems()
+    toastStore.show(`Tag "${name}" deleted`, 'success')
+  } catch (e: any) {
+    toastStore.show(`Delete failed: ${e?.message ?? e}`, 'error')
+  }
 }
 
 // Bulk action state
@@ -179,6 +211,7 @@ function onGlobalKeydown(e: KeyboardEvent) {
     if (ctxVisible.value) { ctxVisible.value = false; return }
     if (showForm.value) { onCancel(); return }
     if (showDetail.value) { onCloseDetail(); return }
+    if (showTagManager.value) { onTagManagerClose(); return }
     if (showBuilder.value) { onBuilderClose(); return }
     if (showSettings.value) { onSettingsClose(); return }
     return
@@ -231,6 +264,7 @@ onMounted(async () => {
   await Promise.all([
     moduleStore.fetchModules(),
     collectionStore.fetchItems(),
+    refreshTags(),
   ])
 })
 
@@ -294,6 +328,7 @@ async function onSave(item: Item) {
       viewingSchema.value = moduleStore.getModuleById(saved.moduleId) ?? null
       showDetail.value = true
       toastStore.show('Item saved', 'success')
+      refreshTags()
     }
   } catch {
     toastStore.show(collectionStore.error ?? 'Failed to save item', 'error')
@@ -346,6 +381,8 @@ function onPaletteAction(action: string) {
     else toastStore.show('Create a collection schema first', 'info')
   } else if (action === 'newSchema') {
     openNewSchemaBuilder()
+  } else if (action === 'manageTags') {
+    openTagManager()
   } else if (action === 'openSettings') {
     openSettings()
   } else if (action === 'exportBackup') {
@@ -437,6 +474,20 @@ function onBuilderClose() {
   showBuilder.value = false
 }
 
+function openTagManager() {
+  selectionStore.clear()
+  showTagManager.value = true
+  showForm.value = false
+  showDetail.value = false
+  showBuilder.value = false
+  showSettings.value = false
+  refreshTags()
+}
+
+function onTagManagerClose() {
+  showTagManager.value = false
+}
+
 function openSettings() {
   selectionStore.clear()
   showSettings.value = true
@@ -475,6 +526,7 @@ function onSettingsClose() {
         <button class="export-btn" :disabled="exporting" @click="onExportBackup">
           {{ exporting ? 'Exporting...' : 'Export Backup' }}
         </button>
+        <button class="settings-btn" @click="openTagManager">Tags</button>
         <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
         <button v-if="authEnabled" class="signout-btn" @click="onSignOut">Sign Out</button>
       </div>
@@ -500,10 +552,21 @@ function onSettingsClose() {
         />
       </Transition>
 
+      <!-- Tag Manager -->
+      <Transition name="fade-slide" mode="out-in">
+        <TagManager
+          v-if="showTagManager && !showSettings"
+          :tags="allTags"
+          @rename="onTagRename"
+          @delete="onTagDelete"
+          @close="onTagManagerClose"
+        />
+      </Transition>
+
       <!-- Schema Builder -->
       <Transition name="fade-slide" mode="out-in">
         <SchemaBuilder
-          v-if="showBuilder && !showSettings"
+          v-if="showBuilder && !showSettings && !showTagManager"
           :moduleId="builderModuleId"
           :initialJSON="builderInitialJSON"
           @saved="onBuilderSaved"
@@ -514,7 +577,7 @@ function onSettingsClose() {
       <!-- Dynamic Form (create/edit item) -->
       <Transition name="fade-slide" mode="out-in">
         <DynamicForm
-          v-if="showForm && selectedSchema && !showBuilder && !showSettings"
+          v-if="showForm && selectedSchema && !showBuilder && !showSettings && !showTagManager"
           :schema="selectedSchema"
           :item="editingItem"
           @save="onSave"
@@ -525,7 +588,7 @@ function onSettingsClose() {
       <!-- Item Detail View -->
       <Transition name="fade-slide" mode="out-in">
         <ItemDetail
-          v-if="showDetail && viewingItem && !showForm && !showBuilder && !showSettings"
+          v-if="showDetail && viewingItem && !showForm && !showBuilder && !showSettings && !showTagManager"
           :item="viewingItem"
           :schema="viewingSchema"
           @edit="onEditFromDetail"
@@ -536,7 +599,7 @@ function onSettingsClose() {
       </Transition>
 
       <!-- Collection views -->
-      <template v-if="!showForm && !showDetail && !showBuilder && !showSettings">
+      <template v-if="!showForm && !showDetail && !showBuilder && !showSettings && !showTagManager">
         <div class="view-controls">
           <button
             class="view-toggle"
@@ -555,6 +618,12 @@ function onSettingsClose() {
           :filters="collectionStore.activeFilters"
           @update="collectionStore.setActiveFilters"
           @clear="collectionStore.clearFilters"
+        />
+
+        <TagFilter
+          :allTags="allTags"
+          :selectedTags="collectionStore.activeTags"
+          @update="collectionStore.setTags"
         />
 
         <div v-if="collectionStore.items.length === 0 && Object.keys(collectionStore.activeFilters).length > 0" class="filtered-empty">

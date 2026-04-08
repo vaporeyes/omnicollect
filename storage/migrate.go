@@ -53,7 +53,7 @@ func MigrateToPostgres(sqlitePath string, pgStore *PostgresStore, modulesDir str
 }
 
 func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
-	rows, err := srcDB.Query(`SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at FROM items`)
+	rows, err := srcDB.Query(`SELECT id, module_id, title, purchase_price, images, coalesce(tags, '[]'), attributes, created_at, updated_at FROM items`)
 	if err != nil {
 		return 0, []string{fmt.Sprintf("querying items: %v", err)}
 	}
@@ -64,10 +64,10 @@ func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
 
 	for rows.Next() {
 		var item Item
-		var imagesJSON, attrsJSON string
+		var imagesJSON, tagsJSON, attrsJSON string
 		err := rows.Scan(
 			&item.ID, &item.ModuleID, &item.Title, &item.PurchasePrice,
-			&imagesJSON, &attrsJSON, &item.CreatedAt, &item.UpdatedAt,
+			&imagesJSON, &tagsJSON, &attrsJSON, &item.CreatedAt, &item.UpdatedAt,
 		)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("scanning item: %v", err))
@@ -76,6 +76,9 @@ func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
 
 		if err := json.Unmarshal([]byte(imagesJSON), &item.Images); err != nil {
 			item.Images = []string{}
+		}
+		if err := json.Unmarshal([]byte(tagsJSON), &item.Tags); err != nil {
+			item.Tags = []string{}
 		}
 		if err := json.Unmarshal([]byte(attrsJSON), &item.Attributes); err != nil {
 			item.Attributes = map[string]any{}
@@ -88,14 +91,15 @@ func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
 		}
 
 		imgJSON, _ := json.Marshal(item.Images)
+		tagJSON, _ := json.Marshal(item.Tags)
 		attrJSON, _ := json.Marshal(item.Attributes)
 
 		_, err = pgStore.db.Exec(
-			`INSERT INTO items (id, module_id, title, purchase_price, images, attributes, created_at, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			`INSERT INTO items (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			 ON CONFLICT (id) DO NOTHING`,
 			item.ID, item.ModuleID, item.Title, item.PurchasePrice,
-			string(imgJSON), string(attrJSON), item.CreatedAt, item.UpdatedAt,
+			string(imgJSON), string(tagJSON), string(attrJSON), item.CreatedAt, item.UpdatedAt,
 		)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("inserting item %s: %v", item.ID, err))

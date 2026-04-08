@@ -31,7 +31,8 @@ func (s *Server) handleGetItems(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
 	moduleID := r.URL.Query().Get("moduleId")
 	filtersJSON := r.URL.Query().Get("filters")
-	items, err := s.app.GetItems(query, moduleID, filtersJSON)
+	tagsJSON := r.URL.Query().Get("tags")
+	items, err := s.app.GetItems(query, moduleID, filtersJSON, tagsJSON)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -93,6 +94,52 @@ func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// Tags
+
+func (s *Server) handleGetAllTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.app.store.GetAllTags()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, tags)
+}
+
+func (s *Server) handleRenameTag(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.OldName == "" || body.NewName == "" {
+		writeError(w, http.StatusBadRequest, "oldName and newName are required")
+		return
+	}
+	count, err := s.app.store.RenameTag(body.OldName, body.NewName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"updated": count})
+}
+
+func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "tag name is required")
+		return
+	}
+	count, err := s.app.store.DeleteTag(name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"updated": count})
 }
 
 // Modules

@@ -81,6 +81,7 @@ func createSQLiteSchema(db *sql.DB) error {
 			title TEXT NOT NULL,
 			purchase_price REAL,
 			images TEXT NOT NULL DEFAULT '[]',
+			tags TEXT NOT NULL DEFAULT '[]',
 			attributes TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -92,15 +93,19 @@ func createSQLiteSchema(db *sql.DB) error {
 			content='',
 			contentless_delete=1
 		)`,
-		// Trigger: insert into FTS after item insert
+		// Trigger: insert into FTS after item insert.
+		// Concatenates attribute values and tag values into attrs_text for search.
 		`CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
 			INSERT INTO items_fts(rowid, title, attrs_text)
 			VALUES (
 				new.rowid,
 				new.title,
-				(SELECT group_concat(value, ' ')
+				coalesce((SELECT group_concat(value, ' ')
 				 FROM json_each(new.attributes)
-				 WHERE type IN ('text','integer','real'))
+				 WHERE type IN ('text','integer','real')), '')
+				|| ' ' ||
+				coalesce((SELECT group_concat(value, ' ')
+				 FROM json_each(new.tags)), '')
 			);
 		END`,
 		// Trigger: remove old FTS entry and insert new one after item update.
@@ -111,9 +116,12 @@ func createSQLiteSchema(db *sql.DB) error {
 			VALUES (
 				new.rowid,
 				new.title,
-				(SELECT group_concat(value, ' ')
+				coalesce((SELECT group_concat(value, ' ')
 				 FROM json_each(new.attributes)
-				 WHERE type IN ('text','integer','real'))
+				 WHERE type IN ('text','integer','real')), '')
+				|| ' ' ||
+				coalesce((SELECT group_concat(value, ' ')
+				 FROM json_each(new.tags)), '')
 			);
 		END`,
 		// Trigger: remove FTS entry after item delete.
@@ -129,15 +137,60 @@ func createSQLiteSchema(db *sql.DB) error {
 		}
 	}
 
+	// Migration: add tags column to existing databases that lack it
+	migrateSQLiteAddTagsColumn(db)
+
 	return nil
 }
 
-// QueryItems retrieves items with optional FTS search, module filter, and attribute filters.
-func (s *SQLiteStore) QueryItems(query string, moduleID string, filtersJSON string) ([]Item, error) {
+// migrateSQLiteAddTagsColumn adds the tags column if it doesn't exist.
+// Silently ignores errors (column already exists).
+func migrateSQLiteAddTagsColumn(db *sql.DB) {
+	_, _ = db.Exec(`ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`)
+	// Recreate FTS triggers to include tags in indexed text.
+	// DROP + CREATE is idempotent since the main DDL uses IF NOT EXISTS
+	// but triggers need to be updated to include the tags column.
+	db.Exec(`DROP TRIGGER IF EXISTS items_ai`)
+	db.Exec(`DROP TRIGGER IF EXISTS items_au`)
+	db.Exec(`CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
+		INSERT INTO items_fts(rowid, title, attrs_text)
+		VALUES (
+			new.rowid,
+			new.title,
+			coalesce((SELECT group_concat(value, ' ')
+			 FROM json_each(new.attributes)
+			 WHERE type IN ('text','integer','real')), '')
+			|| ' ' ||
+			coalesce((SELECT group_concat(value, ' ')
+			 FROM json_each(new.tags)), '')
+		);
+	END`)
+	db.Exec(`CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE ON items BEGIN
+		DELETE FROM items_fts WHERE rowid = old.rowid;
+		INSERT INTO items_fts(rowid, title, attrs_text)
+		VALUES (
+			new.rowid,
+			new.title,
+			coalesce((SELECT group_concat(value, ' ')
+			 FROM json_each(new.attributes)
+			 WHERE type IN ('text','integer','real')), '')
+			|| ' ' ||
+			coalesce((SELECT group_concat(value, ' ')
+			 FROM json_each(new.tags)), '')
+		);
+	END`)
+}
+
+// QueryItems retrieves items with optional FTS search, module filter,
+// attribute filters, and tag filters.
+func (s *SQLiteStore) QueryItems(query string, moduleID string, filtersJSON string, tagsJSON string) ([]Item, error) {
 	filters, err := parseFilters(filtersJSON)
 	if err != nil {
 		return nil, err
 	}
+
+	tagClause, tagArgs := buildSQLiteTagClause(tagsJSON, "i")
+	tagClauseNoAlias, tagArgsNoAlias := buildSQLiteTagClause(tagsJSON, "")
 
 	var rows *sql.Rows
 
@@ -148,7 +201,7 @@ func (s *SQLiteStore) QueryItems(query string, moduleID string, filtersJSON stri
 		safeQuery := "\"" + strings.ReplaceAll(query, "\"", "\"\"") + "\"*"
 
 		// FTS5 search path
-		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.attributes, i.created_at, i.updated_at
+		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.tags, i.attributes, i.created_at, i.updated_at
 			FROM items i
 			JOIN items_fts ON items_fts.rowid = i.rowid
 			WHERE items_fts MATCH ?`
@@ -164,11 +217,17 @@ func (s *SQLiteStore) QueryItems(query string, moduleID string, filtersJSON stri
 			baseSQL += " AND " + c
 		}
 		queryArgs = append(queryArgs, filterArgs...)
+
+		if tagClause != "" {
+			baseSQL += " AND " + tagClause
+			queryArgs = append(queryArgs, tagArgs...)
+		}
+
 		baseSQL += " ORDER BY rank"
 
 		rows, err = s.db.Query(baseSQL, queryArgs...)
 	} else {
-		baseSQL := `SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at
+		baseSQL := `SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at
 			FROM items`
 		var queryArgs []any
 		var whereParts []string
@@ -181,6 +240,11 @@ func (s *SQLiteStore) QueryItems(query string, moduleID string, filtersJSON stri
 		filterClauses, filterArgs := buildSQLiteFilterClauses(filters, "")
 		whereParts = append(whereParts, filterClauses...)
 		queryArgs = append(queryArgs, filterArgs...)
+
+		if tagClauseNoAlias != "" {
+			whereParts = append(whereParts, tagClauseNoAlias)
+			queryArgs = append(queryArgs, tagArgsNoAlias...)
+		}
 
 		if len(whereParts) > 0 {
 			baseSQL += " WHERE " + strings.Join(whereParts, " AND ")
@@ -205,9 +269,16 @@ func (s *SQLiteStore) InsertItem(item Item) (Item, error) {
 	item.CreatedAt = now
 	item.UpdatedAt = now
 
+	item.Tags = normalizeTags(item.Tags)
+
 	imagesJSON, err := json.Marshal(item.Images)
 	if err != nil {
 		return Item{}, fmt.Errorf("marshaling images: %w", err)
+	}
+
+	tagsJSON, err := json.Marshal(item.Tags)
+	if err != nil {
+		return Item{}, fmt.Errorf("marshaling tags: %w", err)
 	}
 
 	attrsJSON, err := json.Marshal(item.Attributes)
@@ -216,10 +287,10 @@ func (s *SQLiteStore) InsertItem(item Item) (Item, error) {
 	}
 
 	_, err = s.db.Exec(
-		`INSERT INTO items (id, module_id, title, purchase_price, images, attributes, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO items (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		item.ID, item.ModuleID, item.Title, item.PurchasePrice,
-		string(imagesJSON), string(attrsJSON), item.CreatedAt, item.UpdatedAt,
+		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.CreatedAt, item.UpdatedAt,
 	)
 	if err != nil {
 		return Item{}, fmt.Errorf("inserting item: %w", err)
@@ -232,9 +303,16 @@ func (s *SQLiteStore) InsertItem(item Item) (Item, error) {
 func (s *SQLiteStore) UpdateItem(item Item) (Item, error) {
 	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
+	item.Tags = normalizeTags(item.Tags)
+
 	imagesJSON, err := json.Marshal(item.Images)
 	if err != nil {
 		return Item{}, fmt.Errorf("marshaling images: %w", err)
+	}
+
+	tagsJSON, err := json.Marshal(item.Tags)
+	if err != nil {
+		return Item{}, fmt.Errorf("marshaling tags: %w", err)
 	}
 
 	attrsJSON, err := json.Marshal(item.Attributes)
@@ -243,10 +321,10 @@ func (s *SQLiteStore) UpdateItem(item Item) (Item, error) {
 	}
 
 	result, err := s.db.Exec(
-		`UPDATE items SET module_id=?, title=?, purchase_price=?, images=?, attributes=?, updated_at=?
+		`UPDATE items SET module_id=?, title=?, purchase_price=?, images=?, tags=?, attributes=?, updated_at=?
 		 WHERE id=?`,
 		item.ModuleID, item.Title, item.PurchasePrice,
-		string(imagesJSON), string(attrsJSON), item.UpdatedAt, item.ID,
+		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.UpdatedAt, item.ID,
 	)
 	if err != nil {
 		return Item{}, fmt.Errorf("updating item: %w", err)
@@ -356,7 +434,7 @@ func (s *SQLiteStore) ExportItemsCSV(ids []string, modules []ModuleSchema) (stri
 	}
 
 	rows, err := s.db.Query(
-		"SELECT id, module_id, title, purchase_price, images, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
+		"SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
 		args...,
 	)
 	if err != nil {
@@ -455,7 +533,216 @@ func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
+// GetAllTags returns all distinct tags with item counts.
+func (s *SQLiteStore) GetAllTags() ([]TagCount, error) {
+	rows, err := s.db.Query(
+		`SELECT value, COUNT(*) FROM items, json_each(items.tags) GROUP BY value ORDER BY value`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying tags: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []TagCount
+	for rows.Next() {
+		var tc TagCount
+		if err := rows.Scan(&tc.Name, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scanning tag: %w", err)
+		}
+		tags = append(tags, tc)
+	}
+	if tags == nil {
+		tags = []TagCount{}
+	}
+	return tags, rows.Err()
+}
+
+// RenameTag renames a tag across all items that contain it.
+func (s *SQLiteStore) RenameTag(oldName, newName string) (int64, error) {
+	newName = strings.ToLower(strings.TrimSpace(newName))
+	if newName == "" {
+		return 0, fmt.Errorf("new tag name cannot be empty")
+	}
+	if len(newName) > 50 {
+		newName = newName[:50]
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Find all items containing the old tag
+	rows, err := tx.Query(
+		`SELECT id, tags FROM items WHERE EXISTS (SELECT 1 FROM json_each(items.tags) WHERE value = ?)`,
+		oldName,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("querying items with tag: %w", err)
+	}
+
+	type idTags struct {
+		id   string
+		tags string
+	}
+	var toUpdate []idTags
+	for rows.Next() {
+		var it idTags
+		if err := rows.Scan(&it.id, &it.tags); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scanning: %w", err)
+		}
+		toUpdate = append(toUpdate, it)
+	}
+	rows.Close()
+
+	var count int64
+	for _, it := range toUpdate {
+		var tags []string
+		json.Unmarshal([]byte(it.tags), &tags)
+		rebuilt := rebuildTags(tags, oldName, newName)
+		tagsJSON, _ := json.Marshal(rebuilt)
+		_, err := tx.Exec(`UPDATE items SET tags = ? WHERE id = ?`, string(tagsJSON), it.id)
+		if err != nil {
+			return 0, fmt.Errorf("updating item %s: %w", it.id, err)
+		}
+		count++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing: %w", err)
+	}
+	return count, nil
+}
+
+// DeleteTag removes a tag from all items that contain it.
+func (s *SQLiteStore) DeleteTag(name string) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(
+		`SELECT id, tags FROM items WHERE EXISTS (SELECT 1 FROM json_each(items.tags) WHERE value = ?)`,
+		name,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("querying items with tag: %w", err)
+	}
+
+	type idTags struct {
+		id   string
+		tags string
+	}
+	var toUpdate []idTags
+	for rows.Next() {
+		var it idTags
+		if err := rows.Scan(&it.id, &it.tags); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("scanning: %w", err)
+		}
+		toUpdate = append(toUpdate, it)
+	}
+	rows.Close()
+
+	var count int64
+	for _, it := range toUpdate {
+		var tags []string
+		json.Unmarshal([]byte(it.tags), &tags)
+		rebuilt := removeTags(tags, name)
+		tagsJSON, _ := json.Marshal(rebuilt)
+		_, err := tx.Exec(`UPDATE items SET tags = ? WHERE id = ?`, string(tagsJSON), it.id)
+		if err != nil {
+			return 0, fmt.Errorf("updating item %s: %w", it.id, err)
+		}
+		count++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing: %w", err)
+	}
+	return count, nil
+}
+
 // --- Helper functions ---
+
+// normalizeTags lowercases, trims, deduplicates, and caps tag length.
+func normalizeTags(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(tags))
+	for _, t := range tags {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" || seen[t] {
+			continue
+		}
+		if len(t) > 50 {
+			t = t[:50]
+		}
+		seen[t] = true
+		result = append(result, t)
+	}
+	return result
+}
+
+// buildSQLiteTagClause creates a WHERE clause for tag filtering.
+// tagsJSON is a JSON array of tag names. Returns empty string if no tags.
+func buildSQLiteTagClause(tagsJSON string, tableAlias string) (string, []any) {
+	if tagsJSON == "" {
+		return "", nil
+	}
+	var tags []string
+	if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil || len(tags) == 0 {
+		return "", nil
+	}
+
+	prefix := ""
+	if tableAlias != "" {
+		prefix = tableAlias + "."
+	}
+
+	placeholders := make([]string, len(tags))
+	args := make([]any, len(tags))
+	for i, t := range tags {
+		placeholders[i] = "?"
+		args[i] = t
+	}
+
+	clause := fmt.Sprintf("EXISTS (SELECT 1 FROM json_each(%stags) WHERE value IN (%s))",
+		prefix, strings.Join(placeholders, ","))
+	return clause, args
+}
+
+// rebuildTags replaces oldName with newName in a tag slice, deduplicating.
+func rebuildTags(tags []string, oldName, newName string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(tags))
+	for _, t := range tags {
+		if t == oldName {
+			t = newName
+		}
+		if !seen[t] {
+			seen[t] = true
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// removeTags removes a specific tag name from the slice.
+func removeTags(tags []string, name string) []string {
+	result := make([]string, 0, len(tags))
+	for _, t := range tags {
+		if t != name {
+			result = append(result, t)
+		}
+	}
+	return result
+}
 
 func settingsPath() (string, error) {
 	configDir, err := os.UserConfigDir()
@@ -529,10 +816,10 @@ func scanItems(rows *sql.Rows) ([]Item, error) {
 	var items []Item
 	for rows.Next() {
 		var item Item
-		var imagesJSON, attrsJSON string
+		var imagesJSON, tagsJSON, attrsJSON string
 		err := rows.Scan(
 			&item.ID, &item.ModuleID, &item.Title, &item.PurchasePrice,
-			&imagesJSON, &attrsJSON, &item.CreatedAt, &item.UpdatedAt,
+			&imagesJSON, &tagsJSON, &attrsJSON, &item.CreatedAt, &item.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning item row: %w", err)
@@ -540,6 +827,9 @@ func scanItems(rows *sql.Rows) ([]Item, error) {
 
 		if err := json.Unmarshal([]byte(imagesJSON), &item.Images); err != nil {
 			item.Images = []string{}
+		}
+		if err := json.Unmarshal([]byte(tagsJSON), &item.Tags); err != nil {
+			item.Tags = []string{}
 		}
 		if err := json.Unmarshal([]byte(attrsJSON), &item.Attributes); err != nil {
 			item.Attributes = map[string]any{}
@@ -582,7 +872,7 @@ func buildCSV(items []Item, modules []ModuleSchema) string {
 	}
 
 	var b strings.Builder
-	header := []string{"id", "title", "module", "purchasePrice", "createdAt", "updatedAt"}
+	header := []string{"id", "title", "module", "purchasePrice", "tags", "createdAt", "updatedAt"}
 	header = append(header, sortedKeys...)
 	b.WriteString(csvRow(header))
 
@@ -595,7 +885,8 @@ func buildCSV(items []Item, modules []ModuleSchema) string {
 		if item.PurchasePrice != nil {
 			price = fmt.Sprintf("%.2f", *item.PurchasePrice)
 		}
-		row := []string{item.ID, item.Title, modName, price, item.CreatedAt, item.UpdatedAt}
+		tagsStr := strings.Join(item.Tags, ", ")
+		row := []string{item.ID, item.Title, modName, price, tagsStr, item.CreatedAt, item.UpdatedAt}
 		for _, k := range sortedKeys {
 			v := item.Attributes[k]
 			if v == nil {

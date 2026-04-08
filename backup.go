@@ -77,7 +77,7 @@ func createCloudBackup(outputPath string, store storage.Store) error {
 	defer zw.Close()
 
 	// Export items as JSON
-	items, err := store.QueryItems("", "", "")
+	items, err := store.QueryItems("", "", "", "")
 	if err != nil {
 		return fmt.Errorf("querying items: %w", err)
 	}

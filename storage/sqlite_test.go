@@ -49,7 +49,7 @@ func TestInsertItem(t *testing.T) {
 	}
 
 	// Query back and verify
-	items, err := store.QueryItems("", "comics", "")
+	items, err := store.QueryItems("", "comics", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestUpdateItem(t *testing.T) {
 	}
 
 	// Query back and verify
-	items, err := store.QueryItems("", "comics", "")
+	items, err := store.QueryItems("", "comics", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestDeleteItem(t *testing.T) {
 		t.Fatalf("DeleteItem: %v", err)
 	}
 
-	items, err := store.QueryItems("", "", "")
+	items, err := store.QueryItems("", "", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestQueryItems_TextSearch(t *testing.T) {
 		}
 	}
 
-	results, err := store.QueryItems("Spider", "", "")
+	results, err := store.QueryItems("Spider", "", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestQueryItems_ModuleFilter(t *testing.T) {
 	_, _ = store.InsertItem(Item{ModuleID: "coins", Title: "Coin A", Images: []string{}, Attributes: map[string]any{}})
 	_, _ = store.InsertItem(Item{ModuleID: "comics", Title: "Comic B", Images: []string{}, Attributes: map[string]any{}})
 
-	results, err := store.QueryItems("", "coins", "")
+	results, err := store.QueryItems("", "coins", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestQueryItems_NoResults(t *testing.T) {
 
 	_, _ = store.InsertItem(Item{ModuleID: "comics", Title: "Something", Images: []string{}, Attributes: map[string]any{}})
 
-	results, err := store.QueryItems("zzzznotfound", "", "")
+	results, err := store.QueryItems("zzzznotfound", "", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestQueryItems_EnumFilter(t *testing.T) {
 	}
 
 	filters := `[{"field":"condition","op":"in","values":["Mint","Fine"]}]`
-	results, err := store.QueryItems("", "", filters)
+	results, err := store.QueryItems("", "", filters, "")
 	if err != nil {
 		t.Fatalf("QueryItems with enum filter: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestQueryItems_BooleanFilter(t *testing.T) {
 	_, _ = store.InsertItem(Item{ModuleID: "comics", Title: "Ungraded", Images: []string{}, Attributes: map[string]any{"isGraded": false}})
 
 	filters := `[{"field":"isGraded","op":"eq","value":true}]`
-	results, err := store.QueryItems("", "", filters)
+	results, err := store.QueryItems("", "", filters, "")
 	if err != nil {
 		t.Fatalf("QueryItems with boolean filter: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestQueryItems_NumberRangeFilter(t *testing.T) {
 	}
 
 	filters := `[{"field":"year","op":"gte","value":1970},{"field":"year","op":"lte","value":2000}]`
-	results, err := store.QueryItems("", "", filters)
+	results, err := store.QueryItems("", "", filters, "")
 	if err != nil {
 		t.Fatalf("QueryItems with range filter: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestQueryItems_CombinedFilters(t *testing.T) {
 
 	// Filter: condition IN (Mint, Fine) AND year >= 1980
 	filters := `[{"field":"condition","op":"in","values":["Mint","Fine"]},{"field":"year","op":"gte","value":1980}]`
-	results, err := store.QueryItems("", "", filters)
+	results, err := store.QueryItems("", "", filters, "")
 	if err != nil {
 		t.Fatalf("QueryItems combined: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestDeleteItems_Batch(t *testing.T) {
 		t.Errorf("deleted count: got %d, want 2", deleted)
 	}
 
-	remaining, err := store.QueryItems("", "", "")
+	remaining, err := store.QueryItems("", "", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestBulkUpdateModule(t *testing.T) {
 		t.Errorf("updated count: got %d, want 2", updated)
 	}
 
-	items, err := store.QueryItems("", "new-module", "")
+	items, err := store.QueryItems("", "new-module", "", "")
 	if err != nil {
 		t.Fatalf("QueryItems: %v", err)
 	}
