@@ -33,6 +33,7 @@ const quickActions = [
   {label: 'Manage Tags', keywords: ['tags', 'tag', 'manage', 'rename', 'delete'], action: 'manageTags'},
   {label: 'Open Settings', keywords: ['settings', 'preferences'], action: 'openSettings'},
   {label: 'Export Backup', keywords: ['backup', 'export'], action: 'exportBackup'},
+  {label: 'Import Backup', keywords: ['backup', 'import', 'restore'], action: 'importBackup'},
 ]
 
 // Filter quick actions by keyword match

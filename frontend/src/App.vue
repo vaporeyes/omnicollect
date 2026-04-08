@@ -23,6 +23,7 @@ import {useSelectionStore} from './stores/selectionStore'
 import BulkActionBar from './components/BulkActionBar.vue'
 import TagFilter from './components/TagFilter.vue'
 import TagManager from './components/TagManager.vue'
+import ImportDialog from './components/ImportDialog.vue'
 import {isAuthConfigured} from './auth/plugin'
 import {AuthGuard} from './auth/guard'
 import {useAuth0} from '@auth0/auth0-vue'
@@ -206,6 +207,7 @@ function onGlobalKeydown(e: KeyboardEvent) {
 
   // Escape: close topmost overlay
   if (e.key === 'Escape') {
+    if (showImportDialog.value) { showImportDialog.value = false; return }
     if (showPalette.value) { showPalette.value = false; return }
     if (lightboxVisible.value) { lightboxVisible.value = false; return }
     if (ctxVisible.value) { ctxVisible.value = false; return }
@@ -387,6 +389,8 @@ function onPaletteAction(action: string) {
     openSettings()
   } else if (action === 'exportBackup') {
     onExportBackup()
+  } else if (action === 'importBackup') {
+    showImportDialog.value = true
   }
 }
 
@@ -428,6 +432,19 @@ async function onBulkUpdateModule() {
   }
   showBulkModuleDialog.value = false
   bulkTargetModuleId.value = ''
+}
+
+// Import dialog state
+const showImportDialog = ref(false)
+
+async function onImported() {
+  showImportDialog.value = false
+  await Promise.all([
+    moduleStore.fetchModules(),
+    collectionStore.fetchItems(),
+    refreshTags(),
+  ])
+  toastStore.show('Backup imported successfully', 'success')
 }
 
 // Export backup state
@@ -526,6 +543,7 @@ function onSettingsClose() {
         <button class="export-btn" :disabled="exporting" @click="onExportBackup">
           {{ exporting ? 'Exporting...' : 'Export Backup' }}
         </button>
+        <button class="export-btn" @click="showImportDialog = true">Import Backup</button>
         <button class="settings-btn" @click="openTagManager">Tags</button>
         <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
         <button v-if="authEnabled" class="signout-btn" @click="onSignOut">Sign Out</button>
@@ -705,6 +723,11 @@ function onSettingsClose() {
       </div>
     </Teleport>
 
+    <ImportDialog
+      v-if="showImportDialog"
+      @close="showImportDialog = false"
+      @imported="onImported"
+    />
     <CommandPalette
       :visible="showPalette"
       @close="showPalette = false"

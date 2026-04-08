@@ -96,6 +96,14 @@ export async function deleteTag(name: string): Promise<void> {
   return del('/api/v1/tags/' + encodeURIComponent(name))
 }
 
+export async function analyzeBackup(file: File): Promise<import('./types').ImportSummary> {
+  return postFile<import('./types').ImportSummary>('/api/v1/import/analyze', file, 'backup')
+}
+
+export async function executeImport(tempId: string, mode: string): Promise<import('./types').ImportResult> {
+  return post<import('./types').ImportResult>('/api/v1/import/execute', {tempId, mode})
+}
+
 export async function downloadFile(path: string, body?: any): Promise<void> {
   const auth = await authHeaders()
   const opts: RequestInit = body

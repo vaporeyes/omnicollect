@@ -198,6 +198,7 @@ omnicollect/
   db.go                # Legacy helpers (dbFilePath for backup)
   imaging.go           # Image validation, thumbnail generation (returns bytes)
   backup.go            # ZIP archive export (database + media + modules)
+  import.go            # ZIP backup import: format detection, Replace/Merge modes
   modules.go           # Legacy helpers (modulesDir for backup)
   settings.go          # Settings methods delegating to Store
   models.go            # Shared types (Item, ModuleSchema, etc.)
@@ -239,6 +240,7 @@ omnicollect/
         TagInput.vue         # Tag input with autocomplete chips
         TagFilter.vue        # Tag filter chips for collection views
         TagManager.vue       # Tag rename/delete management panel
+        ImportDialog.vue     # Backup import multi-step modal
       stores/
         toastStore.ts        # Toast notification queue
     wailsjs/           # Auto-generated Wails bindings (do not edit)
@@ -348,6 +350,27 @@ containing the database, all media files, and module schemas. The
 archive is self-contained and can be used for manual recovery or
 transfer to another machine.
 
+## Backup Import & Restore
+
+Click "Import Backup" in the sidebar (or use the command palette) to
+restore from a previously exported ZIP archive. The two-step flow:
+
+1. **Analyze**: Upload the ZIP file. OmniCollect scans it and shows a
+   summary (item count, image count, module count, detected format).
+2. **Import**: Choose a mode and confirm:
+   - **Merge** (default): Adds backup items alongside existing data.
+     Existing items not in the backup are preserved. Matching IDs are
+     updated with the backup version.
+   - **Replace**: Removes all existing data first, then restores
+     exclusively from the backup (atomic -- rolls back on failure).
+
+Supports both backup formats:
+- **Local format** (SQLite-based): Contains `collection.db` + media + modules
+- **Cloud format** (JSON-based): Contains `items.json` + `modules.json`
+
+Cross-format import works: a local backup can be imported into a cloud
+deployment, and vice versa.
+
 ## Iteration History
 
 1. **Core Engine** (001): Go backend, SQLite schema with FTS5, Wails
@@ -398,3 +421,9 @@ transfer to another machine.
     Tags included in FTS5/tsvector search index and CSV export. REST
     endpoints: GET /api/v1/tags, POST /api/v1/tags/rename,
     DELETE /api/v1/tags/{name}
+15. **Backup Import & Restore** (015): Two-step import flow (analyze +
+    execute) for backup ZIP files. Supports Replace (atomic) and Merge
+    (per-item upsert) modes. Handles both local (SQLite) and cloud (JSON)
+    backup formats with cross-format import. ImportDialog.vue multi-step
+    modal with file picker, summary, mode selection, progress spinner.
+    REST endpoints: POST /api/v1/import/analyze, POST /api/v1/import/execute

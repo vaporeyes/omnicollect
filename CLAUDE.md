@@ -26,6 +26,7 @@ app.go           # Core business logic with Store/MediaStore interfaces
 db.go            # Legacy helpers (dbFilePath for backup)
 imaging.go       # Image validation, thumbnail generation (returns bytes)
 backup.go        # ZIP archive export (database + media + modules)
+import.go        # ZIP backup import: format detection, Replace/Merge modes
 modules.go       # Legacy helpers (modulesDir for backup)
 settings.go      # Wails-bound settings methods delegating to Store
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
@@ -62,7 +63,7 @@ frontend/src/
                  #   ContextMenu, CommandPalette, FilterBar,
                  #   MarkdownEditor, MarkdownRenderer,
                  #   BulkActionBar, TagInput, TagFilter,
-                 #   TagManager
+                 #   TagManager, ImportDialog
 ```
 
 ## Commands
@@ -148,6 +149,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 | `/api/v1/images/upload` | POST | Multipart image upload + processing |
 | `/api/v1/export/backup` | GET | Download backup ZIP |
 | `/api/v1/export/csv` | POST | Download CSV for selected items |
+| `/api/v1/import/analyze` | POST | Upload + analyze backup ZIP (multipart) |
+| `/api/v1/import/execute` | POST | Execute import (tempId + replace/merge mode) |
 | `/api/v1/settings` | GET/PUT | Load/save app settings |
 | `/api/v1/health` | GET | Database and storage connectivity check |
 
@@ -202,6 +205,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - PostgreSQL schema-per-tenant (existing); tenant provisioning reuses existing PostgresStore.initTenantSchema() (013-jwt-auth)
 - Go 1.25+ (backend -- Store interface + handlers), TypeScript + Vue 3 (frontend) + Existing stack (no new dependencies) (014-cross-collection-tags)
 - Tags stored as JSON array on items (`tags TEXT/JSONB`); both SQLite and PostgreSQL Store implementations updated (014-cross-collection-tags)
+- Go 1.25+ (backend import logic), TypeScript + Vue 3 (frontend upload + progress UI) + Go `archive/zip` (existing), existing Store and MediaStore interfaces (015-backup-import)
+- Imports into whatever backend is active (SQLite or PostgreSQL, local filesystem or S3) (015-backup-import)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

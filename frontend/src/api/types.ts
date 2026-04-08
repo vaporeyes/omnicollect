@@ -58,6 +58,22 @@ export interface BulkUpdateResult {
   updated: number
 }
 
+export interface ImportSummary {
+  format: string
+  itemCount: number
+  imageCount: number
+  moduleCount: number
+  warnings: string[]
+  tempId: string
+}
+
+export interface ImportResult {
+  itemsImported: number
+  imagesRestored: number
+  modulesImported: number
+  warnings: string[]
+}
+
 export interface ApiError {
   error: string
 }

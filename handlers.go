@@ -3,6 +3,7 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -293,6 +294,122 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// Import
+
+func (s *Server) handleAnalyzeBackup(w http.ResponseWriter, r *http.Request) {
+	r.ParseMultipartForm(256 << 20) // 256MB max
+	file, _, err := r.FormFile("backup")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "no backup file: "+err.Error())
+		return
+	}
+	defer file.Close()
+
+	// Save to temp file
+	tmp, err := os.CreateTemp("", "omnicollect-import-*.zip")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "creating temp file: "+err.Error())
+		return
+	}
+	defer tmp.Close()
+
+	if _, err := io.Copy(tmp, file); err != nil {
+		os.Remove(tmp.Name())
+		writeError(w, http.StatusInternalServerError, "saving upload: "+err.Error())
+		return
+	}
+	tmp.Close()
+
+	summary, err := analyzeBackupZip(tmp.Name())
+	if err != nil {
+		os.Remove(tmp.Name())
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// tempId is the filename (not full path) for security
+	summary.TempID = filepath.Base(tmp.Name())
+	writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
+	var req ImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.TempID == "" || (req.Mode != "replace" && req.Mode != "merge") {
+		writeError(w, http.StatusBadRequest, "tempId and mode (replace|merge) are required")
+		return
+	}
+
+	// Resolve temp file path (only allow files in the system temp dir)
+	tmpPath := filepath.Join(os.TempDir(), req.TempID)
+	defer os.Remove(tmpPath)
+
+	zr, err := zip.OpenReader(tmpPath)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "backup file not found or expired")
+		return
+	}
+	defer zr.Close()
+
+	format, err := detectBackupFormat(&zr.Reader)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	var items []storage.Item
+	var modules []storage.ModuleSchema
+	if format == "local" {
+		items, modules, err = readItemsFromLocalBackup(&zr.Reader)
+	} else {
+		items, modules, err = readItemsFromCloudBackup(&zr.Reader)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reading backup: "+err.Error())
+		return
+	}
+
+	result := ImportResult{Warnings: []string{}}
+
+	// Check for missing module references
+	result.Warnings = append(result.Warnings, checkMissingModules(items, modules)...)
+
+	// Execute the import
+	if req.Mode == "replace" {
+		if err := executeReplace(s.app.store, items, modules); err != nil {
+			writeError(w, http.StatusInternalServerError, "replace failed (rolled back): "+err.Error())
+			return
+		}
+		result.ItemsImported = len(items)
+		result.ModulesImported = len(modules)
+	} else {
+		processed, err := executeMerge(s.app.store, items, modules)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "merge failed: "+err.Error())
+			return
+		}
+		result.ItemsImported = processed
+		result.ModulesImported = len(modules)
+	}
+
+	// Restore images (best-effort after DB commit)
+	restored, err := restoreImages(&zr.Reader, s.app.mediaStore)
+	if err != nil {
+		result.Warnings = append(result.Warnings, "image restoration had errors: "+err.Error())
+	}
+	result.ImagesRestored = restored
+
+	// Reload modules in memory
+	if reloaded, err := s.app.store.GetModules(); err == nil {
+		s.app.modules = toMainModules(reloaded)
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 // Health
