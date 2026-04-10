@@ -84,6 +84,17 @@ export interface AIStatus {
   enabled: boolean
   provider?: string
   model?: string
+  cloudMode?: boolean
+}
+
+export interface Showcase {
+  id: string
+  slug: string
+  moduleId: string
+  enabled: boolean
+  url?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ApiError {

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"omnicollect/auth"
+	"omnicollect/showcase"
 	"omnicollect/storage"
 )
 
@@ -63,6 +64,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/v1/settings", s.handleGetSettings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.handleSaveSettings)
 
+	// Showcases (authenticated)
+	s.mux.HandleFunc("POST /api/v1/showcases/toggle", s.handleToggleShowcase)
+	s.mux.HandleFunc("GET /api/v1/showcases", s.handleListShowcases)
+
 	// Health
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 
@@ -111,6 +116,7 @@ func (s *Server) tenantScopeMiddleware(next http.Handler) http.Handler {
 
 // buildHandler constructs the full middleware chain around the mux.
 // Auth middleware is applied conditionally based on config.
+// The /showcase/ route is public (no auth) and registered outside the auth chain.
 func (s *Server) buildHandler() http.Handler {
 	cfg := s.app.config
 
@@ -125,25 +131,30 @@ func (s *Server) buildHandler() http.Handler {
 	// Inner handler: tenant scoping + mux
 	inner := s.tenantScopeMiddleware(s.mux)
 
-	var handler http.Handler
+	var authedHandler http.Handler
 	if cfg.IsAuthEnabled() {
 		log.Printf("Auth enabled: issuer=%s audience=%s", cfg.AuthIssuer, cfg.AuthAudience)
 		jwtMiddleware := auth.NewJWTMiddleware(cfg.AuthIssuer, cfg.AuthAudience, provisioner)
 		protected := jwtMiddleware(inner)
 
-		// Exempt health check and OPTIONS from auth
-		handler = auth.ExemptPaths(
-			[]string{"/api/v1/health"},
+		// Exempt health check, media serving, and OPTIONS from auth
+		authedHandler = auth.ExemptPaths(
+			[]string{"/api/v1/health", "/thumbnails/", "/originals/"},
 			protected,
 			inner,
 		)
 	} else {
 		log.Printf("Auth disabled: using local tenant %q", cfg.TenantID)
 		localMiddleware := auth.NewLocalTenantMiddleware(cfg.TenantID, provisioner)
-		handler = localMiddleware(inner)
+		authedHandler = localMiddleware(inner)
 	}
 
-	return corsMiddleware(handler)
+	// Top-level mux: public showcase route outside auth, everything else through auth
+	topMux := http.NewServeMux()
+	topMux.HandleFunc("GET /showcase/{slug...}", showcase.HandleShowcase(s.app.store))
+	topMux.Handle("/", authedHandler)
+
+	return corsMiddleware(topMux)
 }
 
 // Start begins listening on the given port. Port 0 picks a random available port.

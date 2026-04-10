@@ -1,5 +1,7 @@
 <script lang="ts" setup>
-import type {ModuleSchema} from '../api/types'
+import {ref, onMounted} from 'vue'
+import type {ModuleSchema, Showcase} from '../api/types'
+import {toggleShowcase, listShowcases, getAIStatus} from '../api/client'
 
 defineProps<{
   modules: ModuleSchema[]
@@ -10,6 +12,49 @@ const emit = defineEmits<{
   edit: [module: ModuleSchema]
   createSchema: []
 }>()
+
+// Showcase state per module
+const showcaseMap = ref<Record<string, Showcase>>({})
+const copiedSlug = ref<string | null>(null)
+const isCloudMode = ref(false)
+
+onMounted(async () => {
+  // Check AI status to determine if we're in cloud mode (showcase feature requires it)
+  try {
+    const status = await getAIStatus()
+    isCloudMode.value = status.cloudMode === true
+    if (isCloudMode.value) {
+      const showcases = await listShowcases()
+      for (const sc of showcases) {
+        showcaseMap.value[sc.moduleId] = sc
+      }
+    }
+  } catch {
+    isCloudMode.value = false
+  }
+})
+
+async function onToggleShowcase(mod: ModuleSchema, event: Event) {
+  event.stopPropagation()
+  const current = showcaseMap.value[mod.id]
+  const newEnabled = !current?.enabled
+  try {
+    const result = await toggleShowcase(mod.id, newEnabled)
+    showcaseMap.value[mod.id] = result
+  } catch (e) {
+    console.error('Failed to toggle showcase:', e)
+  }
+}
+
+function copyShowcaseUrl(mod: ModuleSchema, event: Event) {
+  event.stopPropagation()
+  const sc = showcaseMap.value[mod.id]
+  if (!sc?.url) return
+  const url = window.location.origin + sc.url
+  navigator.clipboard.writeText(url)
+  copiedSlug.value = sc.slug
+  setTimeout(() => { copiedSlug.value = null }, 2000)
+}
 </script>
 
 <template>
@@ -32,7 +77,30 @@ const emit = defineEmits<{
       >
         <span class="module-name-row">
           <span class="module-name">{{ mod.displayName }}</span>
-          <button class="edit-btn" @click.stop="emit('edit', mod)" title="Edit schema">&#9998;</button>
+          <span class="module-actions">
+            <button
+              v-if="isCloudMode"
+              class="share-btn"
+              :class="{active: showcaseMap[mod.id]?.enabled}"
+              @click.stop="onToggleShowcase(mod, $event)"
+              :title="showcaseMap[mod.id]?.enabled ? 'Make private' : 'Make public'"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/>
+                <polyline points="16 6 12 2 8 6"/>
+                <line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+            </button>
+            <button
+              v-if="isCloudMode && showcaseMap[mod.id]?.enabled"
+              class="copy-btn"
+              @click.stop="copyShowcaseUrl(mod, $event)"
+              :title="copiedSlug === showcaseMap[mod.id]?.slug ? 'Copied!' : 'Copy link'"
+            >
+              {{ copiedSlug === showcaseMap[mod.id]?.slug ? '&#10003;' : '&#128279;' }}
+            </button>
+            <button class="edit-btn" @click.stop="emit('edit', mod)" title="Edit schema">&#9998;</button>
+          </span>
         </span>
         <span v-if="mod.description" class="module-desc">{{ mod.description }}</span>
       </li>
@@ -83,7 +151,12 @@ const emit = defineEmits<{
   color: var(--text-primary);
   line-height: var(--leading-tight);
 }
-.edit-btn {
+.module-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.edit-btn, .share-btn, .copy-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -93,8 +166,16 @@ const emit = defineEmits<{
   opacity: 0;
   transition: opacity var(--transition-fast), color var(--transition-fast);
 }
-.edit-btn:hover {
+.edit-btn:hover, .share-btn:hover, .copy-btn:hover {
   color: var(--accent-blue);
+}
+.share-btn.active {
+  color: var(--accent-blue);
+  opacity: 0.8;
+}
+.module-item:hover .share-btn,
+.module-item:hover .copy-btn {
+  opacity: 1;
 }
 .module-desc {
   font-size: 11px;

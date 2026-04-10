@@ -137,6 +137,26 @@ func createSQLiteSchema(db *sql.DB) error {
 		}
 	}
 
+	// Showcases table for public gallery links
+	showcaseStatements := []string{
+		`CREATE TABLE IF NOT EXISTS showcases (
+			id TEXT PRIMARY KEY,
+			slug TEXT NOT NULL UNIQUE,
+			tenant_id TEXT NOT NULL,
+			module_id TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_showcases_slug ON showcases(slug)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_showcases_tenant_module ON showcases(tenant_id, module_id)`,
+	}
+	for _, stmt := range showcaseStatements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("executing showcase DDL: %w\nStatement: %s", err, stmt)
+		}
+	}
+
 	// Migration: add tags column to existing databases that lack it
 	migrateSQLiteAddTagsColumn(db)
 
@@ -526,6 +546,86 @@ func (s *SQLiteStore) SaveSettings(settingsJSON string) error {
 	}
 
 	return nil
+}
+
+// GetShowcaseBySlug looks up a showcase by its URL slug (cross-tenant).
+func (s *SQLiteStore) GetShowcaseBySlug(slug string) (*Showcase, error) {
+	var sc Showcase
+	var enabled int
+	err := s.db.QueryRow(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM showcases WHERE slug = ?`,
+		slug,
+	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &enabled, &sc.CreatedAt, &sc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying showcase by slug: %w", err)
+	}
+	sc.Enabled = enabled != 0
+	return &sc, nil
+}
+
+// GetShowcaseForModule returns the showcase for a module within the default tenant.
+func (s *SQLiteStore) GetShowcaseForModule(moduleID string) (*Showcase, error) {
+	var sc Showcase
+	var enabled int
+	err := s.db.QueryRow(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM showcases WHERE module_id = ?`,
+		moduleID,
+	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &enabled, &sc.CreatedAt, &sc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying showcase for module: %w", err)
+	}
+	sc.Enabled = enabled != 0
+	return &sc, nil
+}
+
+// UpsertShowcase creates or updates a showcase record. Slug is never overwritten on update.
+func (s *SQLiteStore) UpsertShowcase(showcase Showcase) error {
+	enabledInt := 0
+	if showcase.Enabled {
+		enabledInt = 1
+	}
+	_, err := s.db.Exec(
+		`INSERT INTO showcases (id, slug, tenant_id, module_id, enabled, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(tenant_id, module_id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`,
+		showcase.ID, showcase.Slug, showcase.TenantID, showcase.ModuleID, enabledInt, showcase.CreatedAt, showcase.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting showcase: %w", err)
+	}
+	return nil
+}
+
+// ListShowcases returns all showcases (single-tenant in SQLite mode).
+func (s *SQLiteStore) ListShowcases() ([]Showcase, error) {
+	rows, err := s.db.Query(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM showcases ORDER BY created_at DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying showcases: %w", err)
+	}
+	defer rows.Close()
+
+	var showcases []Showcase
+	for rows.Next() {
+		var sc Showcase
+		var enabled int
+		if err := rows.Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &enabled, &sc.CreatedAt, &sc.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scanning showcase: %w", err)
+		}
+		sc.Enabled = enabled != 0
+		showcases = append(showcases, sc)
+	}
+	if showcases == nil {
+		showcases = []Showcase{}
+	}
+	return showcases, rows.Err()
 }
 
 // Close closes the database connection.

@@ -41,6 +41,11 @@ func NewPostgresStore(databaseURL, tenantID string) (*PostgresStore, error) {
 		return nil, fmt.Errorf("initializing tenant schema: %w", err)
 	}
 
+	if err := initPublicShowcasesTable(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initializing public showcases table: %w", err)
+	}
+
 	return store, nil
 }
 
@@ -55,6 +60,12 @@ func NewPostgresStoreNoTenant(databaseURL string) (*PostgresStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("pinging postgres: %w", err)
 	}
+
+	if err := initPublicShowcasesTable(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initializing public showcases table: %w", err)
+	}
+
 	return &PostgresStore{db: db, tenantSchema: "public"}, nil
 }
 
@@ -635,6 +646,101 @@ func (s *PostgresStore) SaveSettings(settingsJSON string) error {
 	}
 
 	return nil
+}
+
+// initPublicShowcasesTable creates the showcases table in the public schema.
+// Public schema is used so slugs can be looked up without tenant context.
+func initPublicShowcasesTable(db *sql.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS public.showcases (
+			id TEXT PRIMARY KEY,
+			slug TEXT NOT NULL UNIQUE,
+			tenant_id TEXT NOT NULL,
+			module_id TEXT NOT NULL,
+			enabled BOOLEAN NOT NULL DEFAULT FALSE,
+			created_at TIMESTAMPTZ NOT NULL,
+			updated_at TIMESTAMPTZ NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_showcases_slug ON public.showcases(slug)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_showcases_tenant_module ON public.showcases(tenant_id, module_id)`,
+	}
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("executing showcase DDL: %w\nStatement: %s", err, stmt)
+		}
+	}
+	return nil
+}
+
+// GetShowcaseBySlug looks up a showcase by its URL slug across all tenants.
+func (s *PostgresStore) GetShowcaseBySlug(slug string) (*Showcase, error) {
+	var sc Showcase
+	err := s.db.QueryRow(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE slug = $1`,
+		slug,
+	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying showcase by slug: %w", err)
+	}
+	return &sc, nil
+}
+
+// GetShowcaseForModule returns the showcase for a module within the current tenant.
+func (s *PostgresStore) GetShowcaseForModule(moduleID string) (*Showcase, error) {
+	var sc Showcase
+	err := s.db.QueryRow(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE tenant_id = $1 AND module_id = $2`,
+		s.tenantSchema, moduleID,
+	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying showcase for module: %w", err)
+	}
+	return &sc, nil
+}
+
+// UpsertShowcase creates or updates a showcase record. Slug is never overwritten on update.
+func (s *PostgresStore) UpsertShowcase(showcase Showcase) error {
+	_, err := s.db.Exec(
+		`INSERT INTO public.showcases (id, slug, tenant_id, module_id, enabled, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT(tenant_id, module_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
+		showcase.ID, showcase.Slug, showcase.TenantID, showcase.ModuleID, showcase.Enabled, showcase.CreatedAt, showcase.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting showcase: %w", err)
+	}
+	return nil
+}
+
+// ListShowcases returns all showcases for the current tenant.
+func (s *PostgresStore) ListShowcases() ([]Showcase, error) {
+	rows, err := s.db.Query(
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE tenant_id = $1 ORDER BY created_at DESC`,
+		s.tenantSchema,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("querying showcases: %w", err)
+	}
+	defer rows.Close()
+
+	var showcases []Showcase
+	for rows.Next() {
+		var sc Showcase
+		if err := rows.Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scanning showcase: %w", err)
+		}
+		showcases = append(showcases, sc)
+	}
+	if showcases == nil {
+		showcases = []Showcase{}
+	}
+	return showcases, rows.Err()
 }
 
 // Close closes the database connection.

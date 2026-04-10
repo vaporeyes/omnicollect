@@ -470,3 +470,12 @@ deployment, and vice versa.
     fields, suggests title if already set. Feature disabled when
     AI_PROVIDER is empty. No new dependencies.
     REST endpoints: POST /api/v1/ai/analyze, GET /api/v1/ai/status
+17. **Public Showcase URLs** (017): Toggle any collection public to get a
+    shareable gallery URL. Server-rendered HTML via Go templates (zero JS
+    for visitors). CSS :target overlay for item detail with full image.
+    Stable slug generation ({name}-{8-hex}), toggle private revokes access
+    instantly. Showcases table in SQLite main DB / PostgreSQL public schema
+    (cross-tenant slug lookup). 24-item server-side pagination. Feature
+    disabled in local/desktop mode.
+    Routes: GET /showcase/{slug} (public), POST /api/v1/showcases/toggle,
+    GET /api/v1/showcases

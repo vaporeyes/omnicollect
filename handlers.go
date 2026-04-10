@@ -498,13 +498,102 @@ func (s *Server) readOriginalImage(filename string) ([]byte, error) {
 func (s *Server) handleAIStatus(w http.ResponseWriter, r *http.Request) {
 	cfg := s.app.config
 	result := map[string]any{
-		"enabled": cfg.IsAIEnabled(),
+		"enabled":   cfg.IsAIEnabled(),
+		"cloudMode": cfg.IsCloudDB(),
 	}
 	if cfg.IsAIEnabled() {
 		result["provider"] = cfg.AIProvider
 		result["model"] = cfg.AIModel
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// Showcases
+
+func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ModuleID string `json:"moduleId"`
+		Enabled  bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.ModuleID == "" {
+		writeError(w, http.StatusBadRequest, "moduleId is required")
+		return
+	}
+
+	// Determine tenant ID for the showcase record
+	tenantID := "default"
+	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+		tenantID = pgStore.TenantSchema()
+	}
+
+	// Check if showcase already exists for this module (slug stability)
+	existing, err := s.app.store.GetShowcaseForModule(body.ModuleID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	var sc storage.Showcase
+	if existing != nil {
+		// Update existing: preserve slug, just toggle enabled
+		sc = *existing
+		sc.Enabled = body.Enabled
+		sc.UpdatedAt = now
+	} else {
+		// First time: generate slug from module display name
+		moduleName := body.ModuleID
+		modules, err := s.app.store.GetModules()
+		if err == nil {
+			for _, m := range modules {
+				if m.ID == body.ModuleID {
+					moduleName = m.DisplayName
+					break
+				}
+			}
+		}
+
+		sc = storage.Showcase{
+			ID:        fmt.Sprintf("%d", time.Now().UnixNano()),
+			Slug:      storage.GenerateShowcaseSlug(moduleName),
+			TenantID:  tenantID,
+			ModuleID:  body.ModuleID,
+			Enabled:   body.Enabled,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+	}
+
+	if err := s.app.store.UpsertShowcase(sc); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return showcase with URL
+	result := map[string]any{
+		"id":        sc.ID,
+		"slug":      sc.Slug,
+		"moduleId":  sc.ModuleID,
+		"enabled":   sc.Enabled,
+		"url":       "/showcase/" + sc.Slug,
+		"createdAt": sc.CreatedAt,
+		"updatedAt": sc.UpdatedAt,
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleListShowcases(w http.ResponseWriter, r *http.Request) {
+	showcases, err := s.app.store.ListShowcases()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, showcases)
 }
 
 // Health

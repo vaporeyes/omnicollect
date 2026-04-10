@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.CollectionName}} - OmniCollect Showcase</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: #f8f7f4;
+      color: #1a1a1a;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    header {
+      padding: 48px 0 32px;
+      text-align: center;
+      border-bottom: 1px solid #e8e6e1;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-family: 'Instrument Serif', serif;
+      font-size: 2.5rem;
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    header .item-count {
+      font-size: 0.875rem;
+      color: #6b6b6b;
+      font-weight: 300;
+    }
+
+    .empty-message {
+      text-align: center;
+      padding: 80px 24px;
+      color: #6b6b6b;
+      font-size: 1.1rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+      padding-bottom: 40px;
+    }
+
+    .card {
+      display: block;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .card-img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      display: block;
+      background: #eee;
+    }
+
+    .card-body {
+      padding: 12px 14px;
+    }
+
+    .card-title {
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .card-attrs {
+      font-size: 0.75rem;
+      color: #6b6b6b;
+      font-weight: 300;
+    }
+
+    .card-attrs span {
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    /* Detail overlay via CSS :target */
+    .detail-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 100;
+      padding: 24px;
+    }
+
+    .detail-overlay:target {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .detail-content {
+      background: #fff;
+      border-radius: 12px;
+      max-width: 720px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .detail-close {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      font-size: 1.5rem;
+      color: #6b6b6b;
+      text-decoration: none;
+      line-height: 1;
+      z-index: 1;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.9);
+    }
+
+    .detail-close:hover {
+      color: #1a1a1a;
+      background: #f0f0f0;
+    }
+
+    .detail-img {
+      width: 100%;
+      max-height: 400px;
+      object-fit: contain;
+      display: block;
+      background: #f5f5f5;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .detail-body {
+      padding: 24px;
+    }
+
+    .detail-body h2 {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.5rem;
+      font-weight: 400;
+      margin-bottom: 16px;
+    }
+
+    .detail-attrs {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 16px;
+      font-size: 0.875rem;
+      margin-bottom: 16px;
+    }
+
+    .detail-attrs dt {
+      font-weight: 500;
+      color: #6b6b6b;
+    }
+
+    .detail-attrs dd {
+      color: #1a1a1a;
+    }
+
+    .detail-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .tag-chip {
+      display: inline-block;
+      padding: 2px 10px;
+      background: #f0ede8;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 0 48px;
+      font-size: 0.9rem;
+    }
+
+    .pagination a {
+      color: #1a1a1a;
+      text-decoration: none;
+      padding: 6px 14px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+
+    .pagination a:hover {
+      background: #eee;
+    }
+
+    .pagination .current {
+      color: #6b6b6b;
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px 0 40px;
+      font-size: 0.75rem;
+      color: #999;
+      border-top: 1px solid #e8e6e1;
+    }
+
+    @media (max-width: 640px) {
+      header h1 { font-size: 1.75rem; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+      .detail-content { margin: 12px; }
+      .detail-body { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>{{.CollectionName}}</h1>
+      <p class="item-count">{{.TotalItems}} item{{if ne .TotalItems 1}}s{{end}}</p>
+    </header>
+
+    <main>
+      {{if eq (len .Items) 0}}
+      <div class="empty-message">This collection is empty.</div>
+      {{else}}
+      <div class="grid">
+        {{range .Items}}
+        <a href="#item-{{.ID}}" class="card">
+          {{if .PrimaryImage}}
+          <img class="card-img" src="/thumbnails/{{.PrimaryImage}}" loading="lazy" alt="{{.Title}}">
+          {{else}}
+          <div class="card-img" style="display:flex;align-items:center;justify-content:center;color:#ccc;font-size:2rem;">&#9633;</div>
+          {{end}}
+          <div class="card-body">
+            <div class="card-title">{{.Title}}</div>
+            {{if .KeyAttrs}}
+            <div class="card-attrs">
+              {{range .KeyAttrs}}<span>{{.}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </a>
+
+        <div id="item-{{.ID}}" class="detail-overlay">
+          <div class="detail-content">
+            <a href="#" class="detail-close">&times;</a>
+            {{if .PrimaryImage}}
+            <img class="detail-img" src="/originals/{{.PrimaryImage}}" alt="{{.Title}}">
+            {{end}}
+            <div class="detail-body">
+              <h2>{{.Title}}</h2>
+              {{if .AllAttrs}}
+              <dl class="detail-attrs">
+                {{range .AllAttrs}}
+                <dt>{{.Label}}</dt>
+                <dd>{{.Value}}</dd>
+                {{end}}
+              </dl>
+              {{end}}
+              {{if .Tags}}
+              <div class="detail-tags">
+                {{range .Tags}}<span class="tag-chip">{{.}}</span>{{end}}
+              </div>
+              {{end}}
+            </div>
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+    </main>
+
+    {{if gt .TotalPages 1}}
+    <nav class="pagination">
+      {{if gt .Page 1}}
+      <a href="?page={{.PrevPage}}">Previous</a>
+      {{end}}
+      <span class="current">Page {{.Page}} of {{.TotalPages}}</span>
+      {{if lt .Page .TotalPages}}
+      <a href="?page={{.NextPage}}">Next</a>
+      {{end}}
+    </nav>
+    {{end}}
+
+    <footer>Powered by OmniCollect</footer>
+  </div>
+</body>
+</html>

@@ -37,12 +37,18 @@ ai/
   anthropic.go   # Anthropic Messages API client (direct)
   openai_compat.go # OpenAI-compatible client (OpenRouter, Google, etc.)
   prompt.go      # Schema-to-prompt builder + response parser/validator
+showcase/
+  handler.go     # Public gallery HTTP handler (slug lookup, item loading, pagination)
+  templates.go   # go:embed template rendering (RenderGallery, RenderUnavailable)
+  templates/
+    gallery.html     # Server-rendered gallery page (CSS :target detail overlay, zero JS)
+    unavailable.html # Friendly "no longer available" page
 auth/
   context.go   # Tenant ID context helpers (SetTenantID, TenantIDFromContext, SanitizeTenantID)
   middleware.go # JWT validation middleware (Auth0 JWKS), ExemptPaths, provisioning cache
   local.go     # Local-mode middleware (fixed tenant ID bypass)
 storage/
-  db.go          # Store interface (database abstraction)
+  db.go          # Store interface (database abstraction, Showcase type, slug generation)
   media.go       # MediaStore interface (object storage abstraction)
   sqlite.go      # SQLiteStore: local SQLite with FTS5
   sqlite_test.go # Storage layer unit tests (in-memory SQLite)
@@ -137,6 +143,13 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   Feature hidden when `AI_PROVIDER` is empty. `DynamicForm.vue` checks `/api/v1/ai/status`
   on mount, shows "Analyze with AI" button below images, fills only empty fields,
   shows title suggestion if title already has a value. No new Go or npm dependencies.
+- Public showcases: `showcase/` package renders server-side HTML galleries via
+  Go `html/template` (zero JS). Templates embedded via `//go:embed`. Gallery
+  uses CSS `:target` for item detail overlay. Slugs: `{module-name}-{8-hex}`,
+  stable across toggles. `showcases` table: SQLite main DB / PostgreSQL
+  `public` schema (cross-tenant slug lookup). 24 items/page server-side
+  pagination. Feature disabled in local/desktop mode (requires cloud DB).
+  Route `/showcase/{slug}` registered OUTSIDE auth middleware.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
   bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
@@ -164,6 +177,9 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 | `/api/v1/import/execute` | POST | Execute import (tempId + replace/merge mode) |
 | `/api/v1/ai/analyze` | POST | Analyze item image with AI vision model |
 | `/api/v1/ai/status` | GET | Check AI availability (enabled/provider/model) |
+| `/api/v1/showcases` | GET | List showcases for current tenant |
+| `/api/v1/showcases/toggle` | POST | Toggle module public/private, returns Showcase with URL |
+| `/showcase/{slug}` | GET | Public gallery page (no auth, server-rendered HTML) |
 | `/api/v1/settings` | GET/PUT | Load/save app settings |
 | `/api/v1/health` | GET | Database and storage connectivity check |
 
@@ -224,8 +240,13 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - Tags stored as JSON array on items (`tags TEXT/JSONB`); both SQLite and PostgreSQL Store implementations updated (014-cross-collection-tags)
 - Go 1.25+ (backend import logic), TypeScript + Vue 3 (frontend upload + progress UI) + Go `archive/zip` (existing), existing Store and MediaStore interfaces (015-backup-import)
 - Imports into whatever backend is active (SQLite or PostgreSQL, local filesystem or S3) (015-backup-import)
+- Go 1.25+ (backend -- showcase package + handlers), TypeScript + Vue 3 (frontend -- toggle UI) + Go `html/template` (server-rendered galleries), `//go:embed` (binary-embedded templates) (017-public-showcase)
+- Showcases table in SQLite main DB / PostgreSQL `public` schema; items queried via existing Store interface (017-public-showcase)
 - Go 1.25+ (backend AI client + handler), TypeScript + Vue 3 (frontend button + form integration) + No new Go dependencies (uses `net/http` for AI API calls + `encoding/json`); no new frontend dependencies (016-ai-metadata-extraction)
 - No database changes; AI results populate existing Item attributes (016-ai-metadata-extraction)
+- Go 1.25+ (backend -- templates, handlers, database), TypeScript + Vue 3 (frontend -- toggle UI only) + Go `html/template` (standard library); no new frontend dependencies (017-public-showcase)
+- New `showcases` table in both SQLite and PostgreSQL; both Store implementations extended (017-public-showcase)
 
 ## Recent Changes
+- 017-public-showcase: Added public showcase URLs with server-rendered HTML galleries (zero JS), CSS :target detail overlay, stable slug generation, toggle public/private from ModuleSelector, showcases table in SQLite/PostgreSQL, 24-item pagination, cloud-mode-only feature
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

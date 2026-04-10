@@ -12,9 +12,6 @@ import (
 	_ "image/png"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
-
 	"github.com/disintegration/imaging"
 	"github.com/google/uuid"
 	_ "golang.org/x/image/webp"
@@ -83,12 +80,12 @@ func processImageToBytes(sourcePath string) (processedImageData, error) {
 
 	// Generate UUID-based filename
 	id := uuid.New().String()
-	ext := filepath.Ext(sourcePath)
-	if ext == "" {
-		ext = "." + format
-	}
-	origFilename := id + strings.ToLower(ext)
-	thumbFilename := id + ".jpg"
+	// Use the same filename for both original and thumbnail so the frontend
+	// can reference a single filename for both /originals/ and /thumbnails/ paths.
+	// The original bytes are stored as-is regardless of the .jpg extension.
+	filename := id + ".jpg"
+	origFilename := filename
+	thumbFilename := filename
 
 	// Read original bytes
 	origBytes, err := os.ReadFile(sourcePath)

@@ -2,6 +2,13 @@
 // ABOUTME: Implemented by SQLiteStore (local) and PostgresStore (cloud).
 package storage
 
+import (
+	"crypto/rand"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
 // Item represents a single collectible record.
 type Item struct {
 	ID            string                 `json:"id"`
@@ -47,7 +54,18 @@ type DisplayHints struct {
 	Order       int    `json:"order,omitempty"`
 }
 
-// Store defines all database operations for items, modules, and settings.
+// Showcase represents a public gallery link for a collection module.
+type Showcase struct {
+	ID        string `json:"id"`
+	Slug      string `json:"slug"`
+	TenantID  string `json:"tenantId"`
+	ModuleID  string `json:"moduleId"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// Store defines all database operations for items, modules, settings, and showcases.
 // Implementations: SQLiteStore (local mode) and PostgresStore (cloud mode).
 type Store interface {
 	QueryItems(query, moduleID, filtersJSON, tagsJSON string) ([]Item, error)
@@ -65,5 +83,35 @@ type Store interface {
 	LoadModuleFile(id string) (string, error)
 	GetSettings() (string, error)
 	SaveSettings(json string) error
+	GetShowcaseBySlug(slug string) (*Showcase, error)
+	GetShowcaseForModule(moduleID string) (*Showcase, error)
+	UpsertShowcase(showcase Showcase) error
+	ListShowcases() ([]Showcase, error)
 	Close() error
+}
+
+// slugifyRe matches any character that is not alphanumeric or hyphen.
+var slugifyRe = regexp.MustCompile(`[^a-z0-9-]+`)
+
+// GenerateShowcaseSlug creates a URL slug from the module name with a random suffix.
+// Format: {slugified-name}-{8-hex-chars}. Name portion is capped at 30 chars.
+func GenerateShowcaseSlug(moduleName string) string {
+	slug := strings.ToLower(strings.TrimSpace(moduleName))
+	slug = strings.ReplaceAll(slug, " ", "-")
+	slug = slugifyRe.ReplaceAllString(slug, "")
+	// Collapse consecutive hyphens
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	slug = strings.Trim(slug, "-")
+	if len(slug) > 30 {
+		slug = slug[:30]
+	}
+	if slug == "" {
+		slug = "collection"
+	}
+
+	b := make([]byte, 4)
+	rand.Read(b)
+	return fmt.Sprintf("%s-%x", slug, b)
 }
