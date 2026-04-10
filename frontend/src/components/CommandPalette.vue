@@ -43,8 +43,25 @@ const matchedActions = computed(() => {
   return quickActions.filter(a => a.keywords.some(k => k.includes(q) || q.includes(k)))
 })
 
-// Combined list for keyboard navigation: quick actions first, then items
-const totalCount = computed(() => matchedActions.value.length + results.value.length)
+const combinedResults = computed(() => {
+  const arr: any[] = []
+  for (const act of matchedActions.value) {
+    arr.push({ type: 'action', id: act.action, title: act.label, action: act.action })
+  }
+  for (const item of results.value) {
+    arr.push({ 
+      type: 'item', 
+      id: item.id, 
+      title: item.title, 
+      moduleName: moduleName(item.moduleId),
+      thumbnail: item.images && item.images.length > 0 ? item.images[0] : null,
+      rawItem: item
+    })
+  }
+  return arr
+})
+
+const totalCount = computed(() => combinedResults.value.length)
 
 // Reset state when palette opens/closes
 watch(() => props.visible, (vis) => {
@@ -92,6 +109,8 @@ function onKeydown(e: KeyboardEvent) {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     selectHighlighted()
+  } else if (e.key === 'Escape') {
+    emit('close')
   }
 }
 
@@ -103,27 +122,17 @@ function scrollHighlightedIntoView() {
 }
 
 function selectHighlighted() {
-  const actionCount = matchedActions.value.length
-  const idx = highlightedIndex.value
-  if (idx < actionCount) {
-    emit('action', matchedActions.value[idx].action)
-    emit('close')
-  } else {
-    const itemIdx = idx - actionCount
-    if (itemIdx < results.value.length) {
-      emit('selectItem', results.value[itemIdx])
-      emit('close')
-    }
+  const result = combinedResults.value[highlightedIndex.value]
+  if (!result) return
+  executeSelection(result)
+}
+
+function executeSelection(result: any) {
+  if (result.type === 'action') {
+    emit('action', result.action)
+  } else if (result.type === 'item') {
+    emit('selectItem', result.rawItem)
   }
-}
-
-function selectAction(action: string) {
-  emit('action', action)
-  emit('close')
-}
-
-function selectItem(item: Item) {
-  emit('selectItem', item)
   emit('close')
 }
 
@@ -146,61 +155,59 @@ function onBackdropClick() {
               v-model="query"
               type="text"
               class="palette-input"
-              placeholder="Search items, actions..."
+              placeholder="Search items, commands, or jump to..."
               spellcheck="false"
               autocomplete="off"
             />
-            <kbd class="palette-hint">esc</kbd>
+            <span class="palette-hint">esc</span>
           </div>
 
-          <div ref="resultsEl" class="palette-results" v-if="query.trim()">
-            <!-- Quick actions -->
-            <div v-if="matchedActions.length > 0" class="results-group">
-              <div class="group-label">Actions</div>
-              <div
-                v-for="(act, i) in matchedActions"
-                :key="'action-' + act.action"
-                :class="['result-row', 'result-action', {highlighted: highlightedIndex === i}]"
-                @click="selectAction(act.action)"
-                @mouseenter="highlightedIndex = i"
+          <div ref="resultsEl" class="palette-results" v-if="query.trim() || matchedActions.length > 0">
+            <!-- Unified List -->
+            <ul class="results-list" role="listbox">
+              <li
+                v-for="(result, index) in combinedResults"
+                :key="result.type + '-' + result.id"
+                :class="[
+                  'result-row',
+                  { 'highlighted': highlightedIndex === index }
+                ]"
+                @click="executeSelection(result)"
+                @mouseenter="highlightedIndex = index"
               >
-                <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                </svg>
-                <span class="result-title">{{ act.label }}</span>
-              </div>
-            </div>
-
-            <!-- Item results -->
-            <div v-if="results.length > 0" class="results-group">
-              <div class="group-label">Items</div>
-              <div
-                v-for="(item, i) in results"
-                :key="item.id"
-                :class="['result-row', 'result-item', {highlighted: highlightedIndex === matchedActions.length + i}]"
-                @click="selectItem(item)"
-                @mouseenter="highlightedIndex = matchedActions.length + i"
-              >
+                <!-- Icon/Thumbnail -->
                 <img
-                  v-if="item.images && item.images.length > 0"
-                  :src="'/thumbnails/' + encodeURIComponent(item.images[0])"
+                  v-if="result.type === 'item' && result.thumbnail"
+                  :src="'/thumbnails/' + encodeURIComponent(result.thumbnail)"
                   class="result-thumb"
                   alt=""
                 />
-                <div v-else class="result-thumb result-thumb-placeholder">
+                <div v-else-if="result.type === 'item'" class="result-thumb result-thumb-placeholder">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                     <rect x="3" y="3" width="18" height="18" rx="2"/>
                     <circle cx="8.5" cy="8.5" r="1.5"/>
                     <path d="M21 15l-5-5L5 21"/>
                   </svg>
                 </div>
-                <span class="result-title">{{ item.title }}</span>
-                <span class="result-badge">{{ moduleName(item.moduleId) }}</span>
-              </div>
-            </div>
+                <div v-else class="action-icon-wrap">
+                  <svg class="action-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                  </svg>
+                </div>
+                
+                <!-- Text Content -->
+                <div class="result-content">
+                  <span class="result-title">{{ result.title }}</span>
+                  <span v-if="result.moduleName" class="result-subtitle">{{ result.moduleName }}</span>
+                </div>
+                
+                <!-- Active Indicator -->
+                <span v-if="highlightedIndex === index" class="result-active-icon">↵</span>
+              </li>
+            </ul>
 
             <!-- No results -->
-            <div v-if="matchedActions.length === 0 && results.length === 0" class="no-results">
+            <div v-if="combinedResults.length === 0" class="no-results">
               No results for "{{ query.trim() }}"
             </div>
           </div>
@@ -218,177 +225,188 @@ function onBackdropClick() {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 12vh;
+  padding-top: 15vh;
   background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(var(--glass-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
 }
+
 .palette-dialog {
   width: 100%;
-  max-width: 580px;
+  max-width: 640px;
   background: var(--bg-secondary, rgba(30, 30, 46, 0.85));
-  backdrop-filter: blur(var(--glass-blur, 20px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 20px));
   border: 1px solid var(--border-primary, rgba(255,255,255,0.08));
-  border-radius: var(--radius-lg, 16px);
+  border-radius: var(--radius-lg, 20px);
   box-shadow: var(--shadow-lg, 0 16px 48px rgba(0,0,0,0.3));
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Input area */
 .palette-input-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
+  gap: 12px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border-primary);
 }
+
 .search-icon {
   flex-shrink: 0;
   color: var(--text-muted);
-  opacity: 0.6;
 }
+
 .palette-input {
   flex: 1;
   border: none;
   background: transparent;
-  font-family: 'Instrument Serif', serif;
-  font-size: 20px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 18px;
   color: var(--text-primary);
   outline: none;
-  letter-spacing: -0.01em;
 }
+
 .palette-input::placeholder {
   color: var(--text-muted);
-  opacity: 0.5;
+  opacity: 0.7;
 }
+
 .palette-hint {
   flex-shrink: 0;
   font-family: 'Outfit', sans-serif;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
-  background: var(--bg-hover, rgba(255,255,255,0.06));
-  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  padding: 3px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 /* Results area */
 .palette-results {
-  max-height: 380px;
+  max-height: 60vh;
   overflow-y: auto;
-  padding: 6px;
+  padding: 8px;
 }
-.results-group {
-  margin-bottom: 4px;
-}
-.group-label {
-  font-family: 'Outfit', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide, 0.08em);
-  color: var(--text-muted);
-  padding: 6px 10px 4px;
+
+.results-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* Result rows */
 .result-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: var(--radius-sm, 6px);
+  padding: 12px 16px;
+  border-radius: var(--radius-md, 12px);
   cursor: pointer;
-  transition: background 0.08s;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  color: var(--text-primary);
 }
+
 .result-row:hover,
 .result-row.highlighted {
-  background: var(--bg-hover, rgba(255,255,255,0.06));
-}
-
-/* Action rows */
-.action-icon {
-  flex-shrink: 0;
+  background: var(--accent-blue-light);
   color: var(--accent-blue);
-  opacity: 0.8;
 }
 
-/* Item rows */
+/* Icons / Thumbs */
+.action-icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  background: transparent;
+}
+.action-icon {
+  color: currentColor;
+}
+
 .result-thumb {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm, 4px);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm, 6px);
   object-fit: cover;
   flex-shrink: 0;
+  margin-right: 16px;
 }
+
 .result-thumb-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary, rgba(255,255,255,0.04));
+  background: var(--bg-tertiary);
   color: var(--text-muted);
-  opacity: 0.4;
 }
-.result-title {
+
+.result-content {
   flex: 1;
-  font-family: 'Outfit', sans-serif;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  flex-direction: column;
 }
-.result-badge {
-  flex-shrink: 0;
+
+.result-title {
   font-family: 'Outfit', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide, 0.08em);
-  color: var(--accent-blue);
-  background: var(--accent-blue-light, rgba(59,130,246,0.1));
-  padding: 2px 8px;
-  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.result-subtitle {
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.result-row.highlighted .result-subtitle {
+  color: currentColor;
+  opacity: 0.7;
+}
+
+.result-active-icon {
+  font-size: 14px;
+  opacity: 0.75;
+  color: currentColor;
 }
 
 .no-results {
   padding: 24px;
   text-align: center;
   font-family: 'Outfit', sans-serif;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-muted);
 }
 
 /* Transition */
 .palette-enter-active {
-  transition: opacity 0.15s ease-out;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .palette-enter-active .palette-dialog {
-  transition: transform 0.15s ease-out, opacity 0.15s ease-out;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out;
 }
 .palette-leave-active {
-  transition: opacity 0.1s ease-in;
+  transition: opacity 0.15s ease-in;
 }
 .palette-leave-active .palette-dialog {
-  transition: transform 0.1s ease-in, opacity 0.1s ease-in;
+  transition: transform 0.15s ease-in, opacity 0.15s ease-in;
 }
-.palette-enter-from {
-  opacity: 0;
-}
-.palette-enter-from .palette-dialog {
-  opacity: 0;
-  transform: scale(0.97) translateY(-8px);
-}
+.palette-enter-from,
 .palette-leave-to {
   opacity: 0;
 }
+.palette-enter-from .palette-dialog,
 .palette-leave-to .palette-dialog {
-  opacity: 0;
-  transform: scale(0.97) translateY(-8px);
+  transform: scale(0.95) translateY(10px);
 }
 </style>
