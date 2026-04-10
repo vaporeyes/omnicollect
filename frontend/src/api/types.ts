@@ -74,6 +74,18 @@ export interface ImportResult {
   warnings: string[]
 }
 
+export interface AIAnalysisResult {
+  title?: string
+  attributes: Record<string, any>
+  warnings: string[]
+}
+
+export interface AIStatus {
+  enabled: boolean
+  provider?: string
+  model?: string
+}
+
 export interface ApiError {
   error: string
 }

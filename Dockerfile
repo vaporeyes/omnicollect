@@ -22,6 +22,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
 COPY auth/ ./auth/
+COPY ai/ ./ai/
 COPY storage/ ./storage/
 COPY --from=node-builder /app/frontend/dist ./frontend/dist
 RUN CGO_ENABLED=0 GOOS=linux go build -o omnicollect .

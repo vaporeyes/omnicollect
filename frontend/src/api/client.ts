@@ -1,7 +1,7 @@
 // ABOUTME: Centralized fetch-based HTTP client for the OmniCollect REST API.
 // ABOUTME: Supports optional Auth0 Bearer token injection via setTokenGetter.
 
-import type {TagCount} from './types'
+import type {TagCount, AIAnalysisResult, AIStatus} from './types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || ''
 
@@ -102,6 +102,14 @@ export async function analyzeBackup(file: File): Promise<import('./types').Impor
 
 export async function executeImport(tempId: string, mode: string): Promise<import('./types').ImportResult> {
   return post<import('./types').ImportResult>('/api/v1/import/execute', {tempId, mode})
+}
+
+export async function analyzeItem(imageFilename: string, moduleId: string): Promise<AIAnalysisResult> {
+  return post<AIAnalysisResult>('/api/v1/ai/analyze', {imageFilename, moduleId})
+}
+
+export async function getAIStatus(): Promise<AIStatus> {
+  return get<AIStatus>('/api/v1/ai/status')
 }
 
 export async function downloadFile(path: string, body?: any): Promise<void> {

@@ -5,6 +5,7 @@ package main
 import (
 	"archive/zip"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"omnicollect/ai"
 	"omnicollect/storage"
 )
 
@@ -409,6 +411,99 @@ func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
 		s.app.modules = toMainModules(reloaded)
 	}
 
+	writeJSON(w, http.StatusOK, result)
+}
+
+// AI
+
+func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
+	if s.app.aiProvider == nil {
+		writeError(w, http.StatusNotImplemented, "AI is not configured")
+		return
+	}
+
+	var body struct {
+		ImageFilename string `json:"imageFilename"`
+		ModuleID      string `json:"moduleId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if body.ImageFilename == "" || body.ModuleID == "" {
+		writeError(w, http.StatusBadRequest, "imageFilename and moduleId are required")
+		return
+	}
+
+	// Read image bytes from MediaStore
+	imageBytes, err := s.readOriginalImage(body.ImageFilename)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "image not found: "+err.Error())
+		return
+	}
+
+	// Look up module schema
+	modules, err := s.app.GetActiveModules()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading modules: "+err.Error())
+		return
+	}
+	var schema *storage.ModuleSchema
+	for _, m := range modules {
+		if m.ID == body.ModuleID {
+			sm := toStorageModule(m)
+			schema = &sm
+			break
+		}
+	}
+	if schema == nil {
+		writeError(w, http.StatusNotFound, "module not found: "+body.ModuleID)
+		return
+	}
+
+	// Build prompt and call AI
+	prompt := ai.BuildPrompt(*schema)
+	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
+
+	rawResponse, err := s.app.aiProvider.AnalyzeImage(r.Context(), imageBase64, prompt)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "AI analysis failed: "+err.Error())
+		return
+	}
+
+	// Parse and validate AI response against schema
+	attributes, title, warnings := ai.ParseAndValidateResponse(rawResponse, *schema)
+
+	result := map[string]any{
+		"title":      title,
+		"attributes": attributes,
+		"warnings":   warnings,
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// readOriginalImage reads the original image bytes from the active MediaStore.
+func (s *Server) readOriginalImage(filename string) ([]byte, error) {
+	switch ms := s.app.mediaStore.(type) {
+	case *storage.LocalMediaStore:
+		path := filepath.Join(ms.BaseDir(), "originals", filename)
+		return os.ReadFile(path)
+	case *storage.S3MediaStore:
+		return ms.GetOriginal(context.Background(), filename)
+	default:
+		return nil, fmt.Errorf("unsupported media store type")
+	}
+}
+
+func (s *Server) handleAIStatus(w http.ResponseWriter, r *http.Request) {
+	cfg := s.app.config
+	result := map[string]any{
+		"enabled": cfg.IsAIEnabled(),
+	}
+	if cfg.IsAIEnabled() {
+		result["provider"] = cfg.AIProvider
+		result["model"] = cfg.AIModel
+	}
 	writeJSON(w, http.StatusOK, result)
 }
 

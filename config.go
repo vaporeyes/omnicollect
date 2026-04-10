@@ -21,6 +21,10 @@ type Config struct {
 	AuthAudience string
 	AuthIssuer   string
 	AuthClientID string
+	AIProvider   string
+	AIAPIKey     string
+	AIModel      string
+	AIBaseURL    string
 }
 
 // LoadConfig reads configuration from environment variables with sensible defaults.
@@ -56,6 +60,10 @@ func LoadConfig() Config {
 		AuthAudience: os.Getenv("AUTH_AUDIENCE"),
 		AuthIssuer:   os.Getenv("AUTH_ISSUER_URL"),
 		AuthClientID: os.Getenv("AUTH_CLIENT_ID"),
+		AIProvider:   os.Getenv("AI_PROVIDER"),
+		AIAPIKey:     os.Getenv("AI_API_KEY"),
+		AIModel:      os.Getenv("AI_MODEL"),
+		AIBaseURL:    os.Getenv("AI_BASE_URL"),
 	}
 }
 
@@ -72,4 +80,9 @@ func (c Config) IsCloudStorage() bool {
 // IsAuthEnabled returns true if Auth0 JWT validation is configured.
 func (c Config) IsAuthEnabled() bool {
 	return c.AuthIssuer != ""
+}
+
+// IsAIEnabled returns true if an AI provider is configured.
+func (c Config) IsAIEnabled() bool {
+	return c.AIProvider != ""
 }

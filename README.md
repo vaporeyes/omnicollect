@@ -121,6 +121,36 @@ Auth0 dashboard setup:
 3. Enable **Authorization Code Flow with PKCE**
 4. Configure allowed origins for CORS
 
+### AI Metadata Extraction
+
+OmniCollect can analyze photos of collection items using AI vision models
+and auto-fill form fields. Set the AI environment variables to enable:
+
+```bash
+# Anthropic direct
+export AI_PROVIDER=anthropic
+export AI_API_KEY=sk-ant-...
+export AI_MODEL=claude-sonnet-4-6-20250514
+
+# Or OpenRouter (OpenAI-compatible)
+export AI_PROVIDER=openai-compatible
+export AI_BASE_URL=https://openrouter.ai/api/v1
+export AI_API_KEY=sk-or-...
+export AI_MODEL=anthropic/claude-sonnet-4.6
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| AI_PROVIDER | (empty = disabled) | "anthropic" or "openai-compatible" |
+| AI_API_KEY | (empty) | API key for the provider |
+| AI_MODEL | (empty) | Model identifier |
+| AI_BASE_URL | (empty) | Custom endpoint URL (required for openai-compatible) |
+
+When enabled, an "Analyze with AI" button appears in the item form below
+the image attachment section. It sends the primary image to the AI model
+with a prompt built from the active module schema, then populates empty
+fields with the AI response. Fields that already have values are preserved.
+
 ### Data Migration (SQLite to PostgreSQL)
 
 ```bash
@@ -189,8 +219,13 @@ Each attribute can include a `display` object:
 ```
 omnicollect/
   main.go              # Entry point: --serve, --migrate, or Wails desktop
-  config.go            # Environment-based config (DATABASE_URL, S3_*, AUTH_*, etc.)
-  app.go               # Core business logic with Store/MediaStore interfaces
+  config.go            # Environment-based config (DATABASE_URL, S3_*, AUTH_*, AI_*)
+  app.go               # Core business logic with Store/MediaStore/AIProvider
+  ai/
+    provider.go        # AIProvider interface + factory function
+    anthropic.go       # Anthropic Messages API client
+    openai_compat.go   # OpenAI-compatible client (OpenRouter, Google, etc.)
+    prompt.go          # Schema-to-prompt builder + response validator
   auth/
     context.go         # Tenant ID context helpers and sanitization
     middleware.go      # JWT validation middleware with JWKS caching
@@ -427,3 +462,11 @@ deployment, and vice versa.
     backup formats with cross-format import. ImportDialog.vue multi-step
     modal with file picker, summary, mode selection, progress spinner.
     REST endpoints: POST /api/v1/import/analyze, POST /api/v1/import/execute
+16. **AI Metadata Extraction** (016): Vision-model-powered auto-fill of
+    item form fields from uploaded photos. Configurable AI provider
+    (Anthropic direct or OpenAI-compatible for OpenRouter/Google). Prompt
+    built from module schema, response validated against types and enum
+    options. "Analyze with AI" button in DynamicForm fills only empty
+    fields, suggests title if already set. Feature disabled when
+    AI_PROVIDER is empty. No new dependencies.
+    REST endpoints: POST /api/v1/ai/analyze, GET /api/v1/ai/status

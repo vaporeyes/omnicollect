@@ -19,7 +19,7 @@ immutable engineering principles.
 
 ```
 main.go          # Entry point: --serve, --migrate, or default Wails desktop
-config.go        # Environment-based config (DATABASE_URL, S3_*, PORT, TENANT_ID)
+config.go        # Environment-based config (DATABASE_URL, S3_*, PORT, TENANT_ID, AI_*)
 server.go        # HTTP server setup, routing, CORS middleware
 handlers.go      # REST endpoint handlers wrapping App methods
 app.go           # Core business logic with Store/MediaStore interfaces
@@ -32,6 +32,11 @@ settings.go      # Wails-bound settings methods delegating to Store
 models.go        # Shared Go types (Item, ModuleSchema, ProcessImageResult)
 Dockerfile       # Multi-stage build (Go + Node -> alpine)
 docker-compose.yml # Dev stack (app + postgres + minio)
+ai/
+  provider.go    # AIProvider interface + factory (NewAIProvider)
+  anthropic.go   # Anthropic Messages API client (direct)
+  openai_compat.go # OpenAI-compatible client (OpenRouter, Google, etc.)
+  prompt.go      # Schema-to-prompt builder + response parser/validator
 auth/
   context.go   # Tenant ID context helpers (SetTenantID, TenantIDFromContext, SanitizeTenantID)
   middleware.go # JWT validation middleware (Auth0 JWKS), ExemptPaths, provisioning cache
@@ -126,6 +131,12 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   provisions schema on first request. When empty, `NewLocalTenantMiddleware`
   injects TENANT_ID env var directly. Frontend uses `@auth0/auth0-vue` SDK
   with AuthGuard wrapper and Bearer token injection in `api/client.ts`.
+- AI metadata extraction: `ai/` package with `AIProvider` interface (Anthropic +
+  OpenAI-compatible implementations). Prompt dynamically built from module schema
+  via `BuildPrompt()`; response validated against schema via `ParseAndValidateResponse()`.
+  Feature hidden when `AI_PROVIDER` is empty. `DynamicForm.vue` checks `/api/v1/ai/status`
+  on mount, shows "Analyze with AI" button below images, fills only empty fields,
+  shows title suggestion if title already has a value. No new Go or npm dependencies.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
   bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
@@ -151,6 +162,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 | `/api/v1/export/csv` | POST | Download CSV for selected items |
 | `/api/v1/import/analyze` | POST | Upload + analyze backup ZIP (multipart) |
 | `/api/v1/import/execute` | POST | Execute import (tempId + replace/merge mode) |
+| `/api/v1/ai/analyze` | POST | Analyze item image with AI vision model |
+| `/api/v1/ai/status` | GET | Check AI availability (enabled/provider/model) |
 | `/api/v1/settings` | GET/PUT | Load/save app settings |
 | `/api/v1/health` | GET | Database and storage connectivity check |
 
@@ -170,6 +183,10 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 | AUTH_AUDIENCE | (empty) | Auth0 API audience identifier |
 | AUTH_ISSUER_URL | (empty = no auth) | Auth0 issuer URL; enables JWT auth when set |
 | AUTH_CLIENT_ID | (empty) | Auth0 SPA client ID (frontend build-time) |
+| AI_PROVIDER | (empty = disabled) | AI provider: "anthropic" or "openai-compatible" |
+| AI_API_KEY | (empty) | API key for the AI provider |
+| AI_MODEL | (empty) | Model identifier (e.g. "claude-sonnet-4-6-20250514") |
+| AI_BASE_URL | (empty) | Custom endpoint URL (required for openai-compatible) |
 
 ## Data Locations
 
@@ -207,6 +224,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - Tags stored as JSON array on items (`tags TEXT/JSONB`); both SQLite and PostgreSQL Store implementations updated (014-cross-collection-tags)
 - Go 1.25+ (backend import logic), TypeScript + Vue 3 (frontend upload + progress UI) + Go `archive/zip` (existing), existing Store and MediaStore interfaces (015-backup-import)
 - Imports into whatever backend is active (SQLite or PostgreSQL, local filesystem or S3) (015-backup-import)
+- Go 1.25+ (backend AI client + handler), TypeScript + Vue 3 (frontend button + form integration) + No new Go dependencies (uses `net/http` for AI API calls + `encoding/json`); no new frontend dependencies (016-ai-metadata-extraction)
+- No database changes; AI results populate existing Item attributes (016-ai-metadata-extraction)
 
 ## Recent Changes
 - 006-command-palette: Added Go 1.25+ (backend), TypeScript + Vue 3 (frontend) + Wails v2 (IPC/bindings), Pinia (state), Vue Composition API

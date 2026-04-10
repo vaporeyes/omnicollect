@@ -20,6 +20,11 @@ services:
       AUTH_AUDIENCE: ""
       AUTH_ISSUER_URL: ""
       AUTH_CLIENT_ID: ""
+      # AI metadata extraction (leave empty to disable)
+      AI_PROVIDER: ""       # "anthropic" or "openai-compatible"
+      AI_API_KEY: ""        # API key for the provider
+      AI_MODEL: ""          # Model identifier (e.g. "claude-sonnet-4-6-20250514")
+      AI_BASE_URL: ""       # Custom endpoint (required for openai-compatible)
     depends_on:
       postgres:
         condition: service_healthy

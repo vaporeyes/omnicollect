@@ -1,7 +1,8 @@
 <script lang="ts" setup>
-import {reactive, ref, watch, computed, onMounted} from 'vue'
-import type {Item, ModuleSchema, TagCount} from '../api/types'
-import {getAllTags} from '../api/client'
+import {reactive, ref, watch, computed, onMounted, nextTick} from 'vue'
+import type {Item, ModuleSchema, TagCount, AIStatus} from '../api/types'
+import {getAllTags, getAIStatus, analyzeItem} from '../api/client'
+import {useToastStore} from '../stores/toastStore'
 import FormField from './FormField.vue'
 import ImageAttach from './ImageAttach.vue'
 import TagInput from './TagInput.vue'
@@ -29,9 +30,74 @@ const validationErrors = reactive<Record<string, string>>({})
 
 const isEditing = computed(() => !!props.item?.id)
 
+// AI analysis state
+const toastStore = useToastStore()
+const aiStatus = ref<AIStatus | null>(null)
+const aiAnalyzing = ref(false)
+const aiFilledFields = ref<Set<string>>(new Set())
+const aiTitleSuggestion = ref('')
+
+const aiButtonEnabled = computed(() => {
+  return aiStatus.value?.enabled && itemImages.value.length > 0 && !aiAnalyzing.value
+})
+
 onMounted(async () => {
   try { allTags.value = await getAllTags() } catch { /* ignore */ }
+  try { aiStatus.value = await getAIStatus() } catch { /* ignore */ }
 })
+
+async function runAIAnalysis() {
+  if (!aiButtonEnabled.value) return
+  aiAnalyzing.value = true
+  aiFilledFields.value = new Set()
+  aiTitleSuggestion.value = ''
+
+  try {
+    const result = await analyzeItem(itemImages.value[0], props.schema.id)
+    let filledCount = 0
+
+    // Title handling (US3): auto-fill if empty, suggest if already has value
+    if (result.title) {
+      if (!baseFields.title.trim()) {
+        baseFields.title = result.title
+        aiFilledFields.value.add('title')
+        filledCount++
+      } else {
+        aiTitleSuggestion.value = result.title
+      }
+    }
+
+    // Populate only empty fields (US2)
+    for (const [key, val] of Object.entries(result.attributes)) {
+      const current = attributes[key]
+      const isEmpty = current === null || current === undefined ||
+        (typeof current === 'string' && current.trim() === '') ||
+        (typeof current === 'number' && isNaN(current))
+      if (isEmpty && key in attributes) {
+        attributes[key] = val
+        aiFilledFields.value.add(key)
+        filledCount++
+      }
+    }
+
+    if (result.warnings?.length > 0) {
+      toastStore.show(result.warnings.join('; '), 'info')
+    }
+    toastStore.show(`AI filled ${filledCount} field${filledCount !== 1 ? 's' : ''}`, 'success')
+
+    // Clear highlight after a delay (US2 T017)
+    setTimeout(() => { aiFilledFields.value = new Set() }, 2000)
+  } catch (err: any) {
+    toastStore.show('AI analysis failed: ' + (err.message || err), 'error')
+  } finally {
+    aiAnalyzing.value = false
+  }
+}
+
+function acceptTitleSuggestion() {
+  baseFields.title = aiTitleSuggestion.value
+  aiTitleSuggestion.value = ''
+}
 
 // Initialize form when item or schema changes
 watch(() => [props.item, props.schema], () => {
@@ -81,7 +147,12 @@ function validate(): boolean {
   return valid
 }
 
+function onTitleInput() {
+  aiTitleSuggestion.value = ''
+}
+
 function onSubmit() {
+  aiTitleSuggestion.value = ''
   if (!validate()) return
 
   const item: Item = {
@@ -106,16 +177,20 @@ function onSubmit() {
 
     <form @submit.prevent="onSubmit">
       <!-- Base fields -->
-      <div class="form-field" :class="{'has-error': validationErrors['title']}">
+      <div class="form-field" :class="{'has-error': validationErrors['title'], 'ai-filled': aiFilledFields.has('title')}">
         <label class="field-label">Title <span class="required">*</span></label>
         <input
           type="text"
           v-model="baseFields.title"
           placeholder="Item title"
           class="field-input"
+          @input="onTitleInput"
         />
         <div v-if="validationErrors['title']" class="field-error">
           {{ validationErrors['title'] }}
+        </div>
+        <div v-if="aiTitleSuggestion" class="ai-title-suggestion" @click="acceptTitleSuggestion">
+          AI suggestion: {{ aiTitleSuggestion }}
         </div>
       </div>
 
@@ -137,6 +212,7 @@ function onSubmit() {
         :attribute="attr"
         :modelValue="attributes[attr.name]"
         :errorMessage="validationErrors[attr.name]"
+        :class="{'ai-filled': aiFilledFields.has(attr.name)}"
         @update:modelValue="val => attributes[attr.name] = val"
       />
 
@@ -145,6 +221,19 @@ function onSubmit() {
         :images="itemImages"
         @update:images="val => itemImages = val"
       />
+
+      <!-- AI analysis button -->
+      <div v-if="aiStatus?.enabled" class="ai-section">
+        <button
+          type="button"
+          class="btn btn-ai"
+          :disabled="!aiButtonEnabled"
+          :title="itemImages.length === 0 ? 'Add a photo first' : ''"
+          @click="runAIAnalysis"
+        >
+          {{ aiAnalyzing ? 'Analyzing...' : 'Analyze with AI' }}
+        </button>
+      </div>
 
       <!-- Tags -->
       <TagInput
@@ -220,5 +309,41 @@ function onSubmit() {
 }
 .btn-secondary:hover {
   background: var(--btn-secondary-bg-hover);
+}
+.ai-section {
+  margin: 12px 0;
+}
+.btn-ai {
+  padding: 8px 16px;
+  border: 1px solid var(--accent-blue);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  background: transparent;
+  color: var(--accent-blue);
+}
+.btn-ai:hover:not(:disabled) {
+  background: var(--accent-blue);
+  color: var(--text-on-accent);
+}
+.btn-ai:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ai-filled {
+  animation: ai-highlight 2s ease-out;
+}
+@keyframes ai-highlight {
+  0% { background-color: rgba(59, 130, 246, 0.15); }
+  100% { background-color: transparent; }
+}
+.ai-title-suggestion {
+  font-size: 12px;
+  color: var(--accent-blue);
+  margin-top: 4px;
+  cursor: pointer;
+}
+.ai-title-suggestion:hover {
+  text-decoration: underline;
 }
 </style>

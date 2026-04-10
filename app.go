@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"omnicollect/ai"
 	"omnicollect/storage"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -22,6 +23,7 @@ type App struct {
 	mediaStore storage.MediaStore
 	modules    []ModuleSchema
 	config     Config
+	aiProvider ai.AIProvider
 }
 
 // NewApp creates a new App instance.
@@ -78,6 +80,22 @@ func (a *App) InitWithConfig(cfg Config) {
 			log.Fatalf("failed to initialize local media storage: %v", err)
 		}
 		a.mediaStore = localStore
+	}
+
+	// Initialize AI provider if configured
+	if cfg.IsAIEnabled() {
+		provider, err := ai.NewAIProvider(ai.AIConfig{
+			Provider: cfg.AIProvider,
+			APIKey:   cfg.AIAPIKey,
+			Model:    cfg.AIModel,
+			BaseURL:  cfg.AIBaseURL,
+		})
+		if err != nil {
+			log.Printf("warning: failed to initialize AI provider: %v", err)
+		} else {
+			a.aiProvider = provider
+			log.Printf("AI provider initialized: %s (model: %s)", cfg.AIProvider, cfg.AIModel)
+		}
 	}
 
 	// Load modules from store (skip in auth mode -- modules are per-tenant)

@@ -55,6 +55,10 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/v1/import/analyze", s.handleAnalyzeBackup)
 	s.mux.HandleFunc("POST /api/v1/import/execute", s.handleExecuteImport)
 
+	// AI
+	s.mux.HandleFunc("POST /api/v1/ai/analyze", s.handleAnalyzeItem)
+	s.mux.HandleFunc("GET /api/v1/ai/status", s.handleAIStatus)
+
 	// Settings
 	s.mux.HandleFunc("GET /api/v1/settings", s.handleGetSettings)
 	s.mux.HandleFunc("PUT /api/v1/settings", s.handleSaveSettings)
