@@ -65,8 +65,9 @@ frontend/src/
     client.ts    # Centralized fetch-based HTTP client with optional Bearer token
     types.ts     # TypeScript interfaces mirroring Go structs (replaces Wails bindings)
   stores/        # Pinia: moduleStore, collectionStore, selectionStore,
-                 #   toastStore
-  components/    # DynamicForm, FormField, ItemList, CollectionGrid,
+                 #   toastStore, smartFolderStore
+  components/    # AppSidebar (extracted sidebar with navigation),
+                 #   DynamicForm, FormField, ItemList, CollectionGrid,
                  #   ModuleSelector, ImageAttach, ImageLightbox,
                  #   SchemaBuilder, SchemaVisualEditor,
                  #   SchemaCodeEditor, SchemaFormPreview,
@@ -75,7 +76,8 @@ frontend/src/
                  #   MarkdownEditor, MarkdownRenderer,
                  #   BulkActionBar, TagInput, TagFilter,
                  #   TagManager, ImportDialog,
-                 #   DashboardView, DashboardMetricCard
+                 #   DashboardView, DashboardMetricCard,
+                 #   SmartFolders
   composables/   # useDashboardMetrics (computed insights from items)
 ```
 
@@ -160,6 +162,12 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   View toggle: Insights/List/Grid when "All Types" active. Charts react to theme
   changes via CSS variable reads on dark mode toggle. Doughnut groups 7+ modules
   into "Other". Dependencies: `chart.js`, `vue-chartjs`.
+- Smart Folders (Saved Views): `smartFolderStore` (Pinia) persists named view
+  state snapshots (module + search + filters + tags) as `smartFolders` key in
+  the existing settings JSON blob. `SmartFolders.vue` sidebar section with inline
+  naming (Enter to save, Escape to cancel), click-to-apply, right-click context
+  menu for Rename/Delete. Active folder highlighted; clears on manual filter change.
+  View mode (dashboard/list/grid) not included in saved state.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
   bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
@@ -258,6 +266,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - New `showcases` table in both SQLite and PostgreSQL; both Store implementations extended (017-public-showcase)
 - TypeScript 4.6+ (frontend), Go 1.25+ (backend -- no changes) + Vue 3.2+, Pinia 3.0+, Chart.js 4.x (new), vue-chartjs 5.x (new) (018-insights-dashboard)
 - N/A (no backend changes; all computation is client-side from existing store data) (018-insights-dashboard)
+- TypeScript 4.6+ (frontend), Go 1.25+ (backend -- settings storage only, no new endpoints) + Vue 3.2+, Pinia 3.0+ (new store: smartFolderStore) (019-smart-folders)
+- Existing settings JSON blob (SQLite for local, PostgreSQL for cloud) -- Smart Folders stored as `smartFolders` key (019-smart-folders)
 
 ## Recent Changes
 - 017-public-showcase: Added public showcase URLs with server-rendered HTML galleries (zero JS), CSS :target detail overlay, stable slug generation, toggle public/private from ModuleSelector, showcases table in SQLite/PostgreSQL, 24-item pagination, cloud-mode-only feature

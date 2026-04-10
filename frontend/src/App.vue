@@ -5,7 +5,10 @@ import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult, TagCount} f
 import {applyPolineTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
-import ModuleSelector from './components/ModuleSelector.vue'
+import {useToastStore} from './stores/toastStore'
+import {useSelectionStore} from './stores/selectionStore'
+import {useSmartFolderStore, type SmartFolder} from './stores/smartFolderStore'
+import AppSidebar from './components/AppSidebar.vue'
 import DynamicForm from './components/DynamicForm.vue'
 import ItemList from './components/ItemList.vue'
 import CollectionGrid from './components/CollectionGrid.vue'
@@ -18,8 +21,6 @@ import FilterBar from './components/FilterBar.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import type {MenuOption} from './components/ContextMenu.vue'
-import {useToastStore} from './stores/toastStore'
-import {useSelectionStore} from './stores/selectionStore'
 import BulkActionBar from './components/BulkActionBar.vue'
 import TagFilter from './components/TagFilter.vue'
 import TagManager from './components/TagManager.vue'
@@ -33,8 +34,9 @@ const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
 const toastStore = useToastStore()
 const selectionStore = useSelectionStore()
+const smartFolderStore = useSmartFolderStore()
 
-// Auth sign-out (only available when Auth0 is configured)
+// Auth
 const authEnabled = isAuthConfigured
 const auth0 = authEnabled ? useAuth0() : null
 function onSignOut() {
@@ -76,7 +78,7 @@ const showBulkDeleteConfirm = ref(false)
 const showBulkModuleDialog = ref(false)
 const bulkTargetModuleId = ref('')
 
-// Theme configuration, loaded from settings on mount
+// Theme
 const themeConfig = ref<ThemeConfig>(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
 const showSettings = ref(false)
 const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -91,7 +93,6 @@ function refreshTheme() {
   applyPolineTheme(getEffectiveDark(), themeConfig.value)
 }
 
-// Apply immediately with defaults, then update when settings load
 refreshTheme()
 
 function onThemeChange(e: MediaQueryListEvent) {
@@ -104,8 +105,7 @@ onUnmounted(() => {
   document.removeEventListener('keydown', onGlobalKeydown)
 })
 
-// Theme detection handled by CSS media query (no Wails runtime needed)
-
+// View state
 const selectedSchema = ref<ModuleSchema | null>(null)
 const editingItem = ref<Item | null>(null)
 const viewingItem = ref<Item | null>(null)
@@ -115,21 +115,19 @@ const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
 const showDashboard = ref(true)
 
-// Active schema for filter bar (null when "All Types" is selected)
 const activeFilterSchema = computed(() => {
   const id = collectionStore.activeModuleId
   if (!id) return null
   return moduleStore.getModuleById(id) ?? null
 })
 
-// Template ref for search focus
 const itemListRef = ref<InstanceType<typeof ItemList> | null>(null)
 
-// Lightbox state
+// Lightbox
 const lightboxFilename = ref('')
 const lightboxVisible = ref(false)
 
-// Context menu state
+// Item context menu
 const ctxVisible = ref(false)
 const ctxX = ref(0)
 const ctxY = ref(0)
@@ -140,15 +138,31 @@ const ctxOptions: MenuOption[] = [
   {label: 'Delete', action: 'delete', destructive: true},
 ]
 
-// Command palette state
+// Command palette
 const showPalette = ref(false)
 
-// Schema builder state
+// Schema builder
 const showBuilder = ref(false)
 const builderModuleId = ref<string | null>(null)
 const builderInitialJSON = ref<string | null>(null)
 
-// Context menu handlers
+// Smart Folder context menu
+const sidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null)
+const sfCtxFolder = ref<SmartFolder | null>(null)
+const sfCtxVisible = ref(false)
+const sfCtxX = ref(0)
+const sfCtxY = ref(0)
+const sfCtxOptions: MenuOption[] = [
+  {label: 'Rename', action: 'rename'},
+  {label: 'Delete', action: 'delete', destructive: true},
+]
+
+// Import/export
+const showImportDialog = ref(false)
+const exporting = ref(false)
+
+// --- Handlers ---
+
 function onItemContextMenu(item: Item, x: number, y: number) {
   ctxItem.value = item
   ctxX.value = x
@@ -179,12 +193,10 @@ function onCtxSelect(action: string) {
   }
 }
 
-// Shared delete logic for both detail view and context menu
 async function onDeleteItem(item: Item) {
   const title = item.title
   try {
     await collectionStore.deleteItem(item.id)
-    // If we were viewing this item, close the detail view
     if (viewingItem.value?.id === item.id) {
       showDetail.value = false
       viewingItem.value = null
@@ -196,18 +208,16 @@ async function onDeleteItem(item: Item) {
   }
 }
 
-// Global keyboard shortcuts
+// Keyboard shortcuts
 function onGlobalKeydown(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey
 
-  // Cmd/Ctrl+K: toggle command palette
   if (mod && e.key === 'k') {
     e.preventDefault()
     showPalette.value = !showPalette.value
     return
   }
 
-  // Escape: close topmost overlay
   if (e.key === 'Escape') {
     if (showImportDialog.value) { showImportDialog.value = false; return }
     if (showPalette.value) { showPalette.value = false; return }
@@ -215,39 +225,32 @@ function onGlobalKeydown(e: KeyboardEvent) {
     if (ctxVisible.value) { ctxVisible.value = false; return }
     if (showForm.value) { onCancel(); return }
     if (showDetail.value) { onCloseDetail(); return }
-    if (showTagManager.value) { onTagManagerClose(); return }
-    if (showBuilder.value) { onBuilderClose(); return }
+    if (showTagManager.value) { showTagManager.value = false; return }
+    if (showBuilder.value) { showBuilder.value = false; return }
     if (showSettings.value) { onSettingsClose(); return }
     return
   }
 
-  // Cmd/Ctrl+F: focus search (switch to list view if needed)
   if (mod && e.key === 'f') {
     e.preventDefault()
-    // Close overlays first
     showForm.value = false
     showDetail.value = false
     showBuilder.value = false
     showSettings.value = false
-    if (viewMode.value !== 'list') {
-      viewMode.value = 'list'
-    }
+    showDashboard.value = false
+    if (viewMode.value !== 'list') viewMode.value = 'list'
     nextTick(() => itemListRef.value?.focusSearch())
     return
   }
 
-  // Cmd/Ctrl+N: new item for active module (or first module)
   if (mod && e.key === 'n') {
     e.preventDefault()
     const activeId = collectionStore.activeModuleId
-    const mod2 = activeId
+    const m = activeId
       ? moduleStore.getModuleById(activeId)
       : moduleStore.modules[0] ?? null
-    if (mod2) {
-      onModuleSelect(mod2)
-    } else {
-      toastStore.show('Create a collection schema first', 'info')
-    }
+    if (m) onNewItem(m)
+    else toastStore.show('Create a collection schema first', 'info')
     return
   }
 }
@@ -255,14 +258,13 @@ function onGlobalKeydown(e: KeyboardEvent) {
 onMounted(async () => {
   document.addEventListener('keydown', onGlobalKeydown)
 
-  // Load saved theme settings
   try {
-    const json = JSON.stringify(await api.get('/api/v1/settings'))
-    const parsed = JSON.parse(json)
-    if (parsed.theme) {
-      themeConfig.value = {...DEFAULT_CONFIG, ...parsed.theme}
+    const settings = await api.get<any>('/api/v1/settings')
+    if (settings?.theme) {
+      themeConfig.value = {...DEFAULT_CONFIG, ...settings.theme}
       refreshTheme()
     }
+    smartFolderStore.loadFromSettings(settings)
   } catch { /* use defaults */ }
 
   await Promise.all([
@@ -272,7 +274,22 @@ onMounted(async () => {
   ])
 })
 
-function onModuleSelect(mod: ModuleSchema) {
+// Sidebar navigation: clicking a module filters the view (does NOT open form)
+function onNavigate(moduleId: string) {
+  selectionStore.clear()
+  smartFolderStore.clearActive()
+  collectionStore.setFilter(moduleId)
+  // Close any open panels when navigating
+  showForm.value = false
+  showDetail.value = false
+  showBuilder.value = false
+  showSettings.value = false
+  showTagManager.value = false
+  if (!moduleId) showDashboard.value = true
+}
+
+// Explicit new item action (from sidebar + button or Cmd+N)
+function onNewItem(mod: ModuleSchema) {
   selectionStore.clear()
   selectedSchema.value = mod
   editingItem.value = null
@@ -326,7 +343,6 @@ async function onSave(item: Item) {
     const saved = await collectionStore.saveItem(item)
     showForm.value = false
     editingItem.value = null
-    // Return to detail view of the saved item
     if (saved) {
       viewingItem.value = saved
       viewingSchema.value = moduleStore.getModuleById(saved.moduleId) ?? null
@@ -347,10 +363,7 @@ function onDeleteFromDetail() {
 function onCancel() {
   showForm.value = false
   editingItem.value = null
-  // Return to detail view if we were viewing an item
-  if (viewingItem.value) {
-    showDetail.value = true
-  }
+  if (viewingItem.value) showDetail.value = true
 }
 
 function onDashboardSelectItem(id: string) {
@@ -359,23 +372,54 @@ function onDashboardSelectItem(id: string) {
 }
 
 function onAddFirstItem() {
-  if (moduleStore.modules.length > 0) {
-    onModuleSelect(moduleStore.modules[0])
+  if (moduleStore.modules.length > 0) onNewItem(moduleStore.modules[0])
+}
+
+// Smart Folder handlers
+function onSmartFolderApply(folder: SmartFolder) {
+  if (folder.moduleId && !moduleStore.getModuleById(folder.moduleId)) {
+    toastStore.show('Module no longer exists. Showing all items.', 'info')
+    collectionStore.activeModuleId = ''
+  } else {
+    collectionStore.activeModuleId = folder.moduleId
+  }
+  collectionStore.searchQuery = folder.searchQuery || ''
+  collectionStore.activeFilters = folder.filters ? JSON.parse(JSON.stringify(folder.filters)) : {}
+  collectionStore.activeTags = folder.tags ? [...folder.tags] : []
+  showForm.value = false
+  showDetail.value = false
+  showBuilder.value = false
+  showSettings.value = false
+  showTagManager.value = false
+  if (!collectionStore.activeModuleId) showDashboard.value = true
+  collectionStore.fetchItems()
+}
+
+function onSmartFolderContextMenu(folder: SmartFolder, x: number, y: number) {
+  sfCtxFolder.value = folder
+  sfCtxX.value = x
+  sfCtxY.value = y
+  sfCtxVisible.value = true
+}
+
+function onSfCtxSelect(action: string) {
+  const folder = sfCtxFolder.value
+  if (!folder) return
+  if (action === 'rename') {
+    sidebarRef.value?.startRename(folder.id)
+  } else if (action === 'delete') {
+    smartFolderStore.remove(folder.id)
+    toastStore.show(`"${folder.name}" deleted`, 'success')
   }
 }
 
-function onFilterChange(moduleId: string) {
-  selectionStore.clear()
-  collectionStore.setFilter(moduleId)
-  // Reset to dashboard view when returning to "All Types"
-  if (!moduleId) showDashboard.value = true
-}
-
+// Search (from ItemList)
 function onSearch(query: string) {
+  smartFolderStore.clearActive()
   collectionStore.setSearch(query)
 }
 
-// Command palette handlers
+// Command palette
 function onPaletteSelectItem(item: Item) {
   showPalette.value = false
   onItemSelect(item)
@@ -385,10 +429,10 @@ function onPaletteAction(action: string) {
   showPalette.value = false
   if (action === 'newItem') {
     const activeId = collectionStore.activeModuleId
-    const mod = activeId
+    const m = activeId
       ? moduleStore.getModuleById(activeId)
       : moduleStore.modules[0] ?? null
-    if (mod) onModuleSelect(mod)
+    if (m) onNewItem(m)
     else toastStore.show('Create a collection schema first', 'info')
   } else if (action === 'newSchema') {
     openNewSchemaBuilder()
@@ -403,10 +447,9 @@ function onPaletteAction(action: string) {
   }
 }
 
-// Bulk action handlers
+// Bulk actions
 async function onBulkDelete() {
   const ids = selectionStore.selectedIdArray()
-  const count = ids.length
   try {
     const result = await api.post<BulkDeleteResult>('/api/v1/items/batch-delete', {ids})
     selectionStore.clear()
@@ -443,9 +486,6 @@ async function onBulkUpdateModule() {
   bulkTargetModuleId.value = ''
 }
 
-// Import dialog state
-const showImportDialog = ref(false)
-
 async function onImported() {
   showImportDialog.value = false
   await Promise.all([
@@ -455,9 +495,6 @@ async function onImported() {
   ])
   toastStore.show('Backup imported successfully', 'success')
 }
-
-// Export backup state
-const exporting = ref(false)
 
 async function onExportBackup() {
   exporting.value = true
@@ -471,7 +508,7 @@ async function onExportBackup() {
   }
 }
 
-// Schema builder handlers
+// Schema builder
 function openNewSchemaBuilder() {
   builderModuleId.value = null
   builderInitialJSON.value = null
@@ -483,7 +520,6 @@ async function openEditSchemaBuilder(mod: ModuleSchema) {
   try {
     const data = await api.get<any>('/api/v1/modules/' + mod.id + '/file')
     builderModuleId.value = mod.id
-    // api.get returns a parsed object; SchemaBuilder expects a JSON string
     builderInitialJSON.value = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
     showBuilder.value = true
     showForm.value = false
@@ -497,10 +533,6 @@ async function onBuilderSaved() {
   await moduleStore.fetchModules()
 }
 
-function onBuilderClose() {
-  showBuilder.value = false
-}
-
 function openTagManager() {
   selectionStore.clear()
   showTagManager.value = true
@@ -509,10 +541,6 @@ function openTagManager() {
   showBuilder.value = false
   showSettings.value = false
   refreshTags()
-}
-
-function onTagManagerClose() {
-  showTagManager.value = false
 }
 
 function openSettings() {
@@ -529,7 +557,6 @@ function onSettingsSaved(config: ThemeConfig) {
 }
 
 function onSettingsClose() {
-  // Re-apply saved config in case user changed things without saving
   refreshTheme()
   showSettings.value = false
 }
@@ -538,29 +565,24 @@ function onSettingsClose() {
 <template>
   <component :is="authEnabled ? AuthGuard : 'div'">
   <div class="app-layout">
-    <aside class="sidebar animate-slide-up delay-1">
-      <h2 class="animate-fade-in delay-2">OmniCollect</h2>
-      <button class="builder-btn animate-fade-in delay-3" @click="openNewSchemaBuilder">+ New Schema</button>
-      <div class="sidebar-scroll animate-fade-in delay-4">
-        <ModuleSelector
-          :modules="moduleStore.modules"
-          @select="onModuleSelect"
-          @edit="openEditSchemaBuilder"
-          @createSchema="openNewSchemaBuilder"
-        />
-      </div>
-      <div class="sidebar-bottom animate-fade-in delay-5">
-        <button class="export-btn" :disabled="exporting" @click="onExportBackup">
-          {{ exporting ? 'Exporting...' : 'Export Backup' }}
-        </button>
-        <button class="export-btn" @click="showImportDialog = true">Import Backup</button>
-        <button class="settings-btn" @click="openTagManager">Tags</button>
-        <button class="settings-btn" @click="openSettings">&#9881; Settings</button>
-        <button v-if="authEnabled" class="signout-btn" @click="onSignOut">Sign Out</button>
-      </div>
-    </aside>
+    <AppSidebar
+      ref="sidebarRef"
+      :exporting="exporting"
+      :authEnabled="authEnabled"
+      @navigate="onNavigate"
+      @newItem="onNewItem"
+      @newSchema="openNewSchemaBuilder"
+      @editSchema="openEditSchemaBuilder"
+      @applySmartFolder="onSmartFolderApply"
+      @smartFolderContextMenu="onSmartFolderContextMenu"
+      @exportBackup="onExportBackup"
+      @importBackup="showImportDialog = true"
+      @openTags="openTagManager"
+      @openSettings="openSettings"
+      @signOut="onSignOut"
+    />
 
-    <main class="main-content animate-slide-up delay-2">
+    <main class="main-content">
       <div v-if="moduleStore.loading || collectionStore.loading" class="loading">
         Loading...
       </div>
@@ -569,7 +591,6 @@ function onSettingsClose() {
         {{ collectionStore.error }}
       </div>
 
-      <!-- Settings Page -->
       <Transition name="fade-slide" mode="out-in">
         <SettingsPage
           v-if="showSettings"
@@ -580,29 +601,26 @@ function onSettingsClose() {
         />
       </Transition>
 
-      <!-- Tag Manager -->
       <Transition name="fade-slide" mode="out-in">
         <TagManager
           v-if="showTagManager && !showSettings"
           :tags="allTags"
           @rename="onTagRename"
           @delete="onTagDelete"
-          @close="onTagManagerClose"
+          @close="showTagManager = false"
         />
       </Transition>
 
-      <!-- Schema Builder -->
       <Transition name="fade-slide" mode="out-in">
         <SchemaBuilder
           v-if="showBuilder && !showSettings && !showTagManager"
           :moduleId="builderModuleId"
           :initialJSON="builderInitialJSON"
           @saved="onBuilderSaved"
-          @close="onBuilderClose"
+          @close="showBuilder = false"
         />
       </Transition>
 
-      <!-- Dynamic Form (create/edit item) -->
       <Transition name="fade-slide" mode="out-in">
         <DynamicForm
           v-if="showForm && selectedSchema && !showBuilder && !showSettings && !showTagManager"
@@ -613,7 +631,6 @@ function onSettingsClose() {
         />
       </Transition>
 
-      <!-- Item Detail View -->
       <Transition name="fade-slide" mode="out-in">
         <ItemDetail
           v-if="showDetail && viewingItem && !showForm && !showBuilder && !showSettings && !showTagManager"
@@ -650,14 +667,14 @@ function onSettingsClose() {
         <FilterBar
           :schema="activeFilterSchema"
           :filters="collectionStore.activeFilters"
-          @update="collectionStore.setActiveFilters"
-          @clear="collectionStore.clearFilters"
+          @update="(f: any) => { smartFolderStore.clearActive(); collectionStore.setActiveFilters(f) }"
+          @clear="() => { smartFolderStore.clearActive(); collectionStore.clearFilters() }"
         />
 
         <TagFilter
           :allTags="allTags"
           :selectedTags="collectionStore.activeTags"
-          @update="collectionStore.setTags"
+          @update="(t: string[]) => { smartFolderStore.clearActive(); collectionStore.setTags(t) }"
         />
 
         <div v-if="collectionStore.items.length === 0 && Object.keys(collectionStore.activeFilters).length > 0" class="filtered-empty">
@@ -683,7 +700,7 @@ function onSettingsClose() {
             :modules="moduleStore.modules"
             :activeModuleId="collectionStore.activeModuleId"
             @select="onItemSelect"
-            @filterChange="onFilterChange"
+            @filterChange="onNavigate"
             @search="onSearch"
             @addItem="onAddFirstItem"
             @itemContextMenu="onItemContextMenu"
@@ -767,6 +784,14 @@ function onSettingsClose() {
       @select="onCtxSelect"
       @close="ctxVisible = false"
     />
+    <ContextMenu
+      :visible="sfCtxVisible"
+      :x="sfCtxX"
+      :y="sfCtxY"
+      :options="sfCtxOptions"
+      @select="onSfCtxSelect"
+      @close="sfCtxVisible = false"
+    />
     <ToastProvider />
   </div>
   </component>
@@ -786,112 +811,6 @@ body {
 .app-layout {
   display: flex;
   height: 100vh;
-}
-.sidebar {
-  width: 250px;
-  padding: 20px 16px 12px;
-  background: var(--bg-tertiary);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.sidebar h2 {
-  margin: 0 0 12px 0;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-wide);
-  color: var(--text-muted);
-}
-.sidebar-scroll {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-.sidebar-bottom {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-primary);
-  margin-top: 8px;
-}
-.builder-btn {
-  width: 100%;
-  padding: 9px 12px;
-  margin-bottom: 4px;
-  border: 1px dashed var(--accent-blue);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--accent-blue);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-.builder-btn:hover {
-  background: var(--accent-blue-light);
-  border-color: var(--accent-blue-hover);
-}
-.export-btn {
-  width: 100%;
-  padding: 7px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.export-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.export-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.settings-btn {
-  width: 100%;
-  padding: 7px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.settings-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-.signout-btn {
-  width: 100%;
-  padding: 7px 12px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-.signout-btn:hover {
-  background: var(--bg-hover);
-  color: var(--accent-danger, #e74c3c);
-}
-.auth-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  font-size: 16px;
-  color: var(--text-muted);
 }
 .main-content {
   flex: 1;
@@ -946,8 +865,6 @@ body {
   color: var(--text-on-accent);
   box-shadow: var(--shadow-sm);
 }
-
-/* Bulk action dialogs */
 .confirm-overlay {
   position: fixed;
   inset: 0;
@@ -1022,7 +939,6 @@ body {
   background: var(--bg-input);
   color: var(--text-primary);
 }
-
 .filtered-empty {
   text-align: center;
   padding: 32px 16px;
@@ -1040,8 +956,6 @@ body {
   padding: 0;
   margin-left: 4px;
 }
-
-/* fade-slide: content panels slide up slightly and fade in */
 .fade-slide-enter-active {
   transition: opacity 0.2s ease-out, transform 0.2s ease-out;
 }
