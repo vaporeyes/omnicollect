@@ -24,6 +24,7 @@ import BulkActionBar from './components/BulkActionBar.vue'
 import TagFilter from './components/TagFilter.vue'
 import TagManager from './components/TagManager.vue'
 import ImportDialog from './components/ImportDialog.vue'
+import DashboardView from './components/DashboardView.vue'
 import {isAuthConfigured} from './auth/plugin'
 import {AuthGuard} from './auth/guard'
 import {useAuth0} from '@auth0/auth0-vue'
@@ -112,6 +113,7 @@ const viewingSchema = ref<ModuleSchema | null>(null)
 const showForm = ref(false)
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
+const showDashboard = ref(true)
 
 // Active schema for filter bar (null when "All Types" is selected)
 const activeFilterSchema = computed(() => {
@@ -351,6 +353,11 @@ function onCancel() {
   }
 }
 
+function onDashboardSelectItem(id: string) {
+  const item = collectionStore.items.find(i => i.id === id)
+  if (item) onItemSelect(item)
+}
+
 function onAddFirstItem() {
   if (moduleStore.modules.length > 0) {
     onModuleSelect(moduleStore.modules[0])
@@ -360,6 +367,8 @@ function onAddFirstItem() {
 function onFilterChange(moduleId: string) {
   selectionStore.clear()
   collectionStore.setFilter(moduleId)
+  // Reset to dashboard view when returning to "All Types"
+  if (!moduleId) showDashboard.value = true
 }
 
 function onSearch(query: string) {
@@ -620,14 +629,20 @@ function onSettingsClose() {
       <template v-if="!showForm && !showDetail && !showBuilder && !showSettings && !showTagManager">
         <div class="view-controls">
           <button
+            v-if="!collectionStore.activeModuleId"
             class="view-toggle"
-            :class="{active: viewMode === 'list'}"
-            @click="viewMode = 'list'"
+            :class="{active: showDashboard}"
+            @click="showDashboard = true"
+          >Insights</button>
+          <button
+            class="view-toggle"
+            :class="{active: !showDashboard && viewMode === 'list'}"
+            @click="showDashboard = false; viewMode = 'list'"
           >List</button>
           <button
             class="view-toggle"
-            :class="{active: viewMode === 'grid'}"
-            @click="viewMode = 'grid'"
+            :class="{active: !showDashboard && viewMode === 'grid'}"
+            @click="showDashboard = false; viewMode = 'grid'"
           >Grid</button>
         </div>
 
@@ -650,8 +665,17 @@ function onSettingsClose() {
         </div>
 
         <Transition name="fade-slide" mode="out-in">
+          <DashboardView
+            v-if="showDashboard && !collectionStore.activeModuleId"
+            key="dashboard"
+            :items="collectionStore.items"
+            :modules="moduleStore.modules"
+            :dark="getEffectiveDark()"
+            @selectItem="onDashboardSelectItem"
+          />
+
           <ItemList
-            v-if="viewMode === 'list'"
+            v-else-if="viewMode === 'list'"
             key="list"
             ref="itemListRef"
             :items="collectionStore.items"

@@ -74,7 +74,9 @@ frontend/src/
                  #   ContextMenu, CommandPalette, FilterBar,
                  #   MarkdownEditor, MarkdownRenderer,
                  #   BulkActionBar, TagInput, TagFilter,
-                 #   TagManager, ImportDialog
+                 #   TagManager, ImportDialog,
+                 #   DashboardView, DashboardMetricCard
+  composables/   # useDashboardMetrics (computed insights from items)
 ```
 
 ## Commands
@@ -150,6 +152,14 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   `public` schema (cross-tenant slug lookup). 24 items/page server-side
   pagination. Feature disabled in local/desktop mode (requires cloud DB).
   Route `/showcase/{slug}` registered OUTSIDE auth middleware.
+- Insights dashboard: `DashboardView.vue` renders as default "All Types" landing
+  page with glassmorphism summary cards (Total Value, Total Items, Most Valuable
+  Item) and two Chart.js charts (doughnut: value-by-module, bar: acquisitions-over-time).
+  All data computed client-side via `useDashboardMetrics` composable from existing
+  collectionStore items. `showDashboard` ref in App.vue (session-only, defaults true).
+  View toggle: Insights/List/Grid when "All Types" active. Charts react to theme
+  changes via CSS variable reads on dark mode toggle. Doughnut groups 7+ modules
+  into "Other". Dependencies: `chart.js`, `vue-chartjs`.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
   bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
@@ -246,6 +256,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - No database changes; AI results populate existing Item attributes (016-ai-metadata-extraction)
 - Go 1.25+ (backend -- templates, handlers, database), TypeScript + Vue 3 (frontend -- toggle UI only) + Go `html/template` (standard library); no new frontend dependencies (017-public-showcase)
 - New `showcases` table in both SQLite and PostgreSQL; both Store implementations extended (017-public-showcase)
+- TypeScript 4.6+ (frontend), Go 1.25+ (backend -- no changes) + Vue 3.2+, Pinia 3.0+, Chart.js 4.x (new), vue-chartjs 5.x (new) (018-insights-dashboard)
+- N/A (no backend changes; all computation is client-side from existing store data) (018-insights-dashboard)
 
 ## Recent Changes
 - 017-public-showcase: Added public showcase URLs with server-rendered HTML galleries (zero JS), CSS :target detail overlay, stable slug generation, toggle public/private from ModuleSelector, showcases table in SQLite/PostgreSQL, 24-item pagination, cloud-mode-only feature
