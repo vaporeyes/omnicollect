@@ -1,0 +1,180 @@
+{
+  "id": "cameras",
+  "displayName": "Cameras",
+  "description": "Camera and lens collection including film, digital, and vintage",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Brand",
+        "placeholder": "e.g. Leica, Canon, Nikon, Hasselblad, Fujifilm",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. M6, EOS R5, X100VI, 500C/M",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year of Manufacture",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "type",
+      "type": "enum",
+      "required": true,
+      "options": ["SLR (Film)", "SLR (Digital)", "Mirrorless", "Rangefinder", "Point & Shoot", "Medium Format", "Large Format", "Twin Lens Reflex", "Instant / Polaroid", "Action Camera", "Drone Camera", "Cinema Camera", "Lens Only"],
+      "display": {
+        "label": "Type",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "filmOrDigital",
+      "type": "enum",
+      "required": true,
+      "options": ["Film", "Digital"],
+      "display": {
+        "label": "Film / Digital",
+        "group": "Classification",
+        "order": 6
+      }
+    },
+    {
+      "name": "filmFormat",
+      "type": "enum",
+      "required": false,
+      "options": ["35mm", "120 / Medium Format", "4x5 Large Format", "8x10 Large Format", "110", "APS", "Instant", "N/A (Digital)"],
+      "display": {
+        "label": "Film Format",
+        "group": "Specs",
+        "order": 7
+      }
+    },
+    {
+      "name": "sensorSize",
+      "type": "enum",
+      "required": false,
+      "options": ["Full Frame", "APS-C", "Micro Four Thirds", "Medium Format (Digital)", "1 Inch", "1/2.3 Inch", "N/A (Film)"],
+      "display": {
+        "label": "Sensor Size",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "megapixels",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Megapixels",
+        "placeholder": "e.g. 45, 61, 26",
+        "group": "Specs",
+        "order": 9
+      }
+    },
+    {
+      "name": "lensMount",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Lens Mount",
+        "placeholder": "e.g. Leica M, Canon RF, Nikon Z, Sony E",
+        "group": "Specs",
+        "order": 10
+      }
+    },
+    {
+      "name": "includedLens",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Included / Attached Lens",
+        "placeholder": "e.g. Summicron 50mm f/2, Body Only",
+        "group": "Details",
+        "order": 11
+      }
+    },
+    {
+      "name": "shutterCount",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Shutter Count / Actuations",
+        "placeholder": "Digital cameras only",
+        "group": "Condition",
+        "order": 12
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Sealed", "Mint", "Excellent", "Very Good", "Good", "Fair", "For Parts / Repair"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 13
+      }
+    },
+    {
+      "name": "isFunctional",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Fully Functional",
+        "group": "Condition",
+        "order": 14
+      }
+    },
+    {
+      "name": "hasOriginalPackaging",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Original Packaging",
+        "group": "Completeness",
+        "order": 15
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Light seals, viewfinder clarity, sensor spots, CLA history",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 16
+      }
+    }
+  ]
+}

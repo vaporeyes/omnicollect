@@ -481,9 +481,10 @@ function openNewSchemaBuilder() {
 
 async function openEditSchemaBuilder(mod: ModuleSchema) {
   try {
-    const json = await api.get<string>('/api/v1/modules/' + mod.id + '/file')
+    const data = await api.get<any>('/api/v1/modules/' + mod.id + '/file')
     builderModuleId.value = mod.id
-    builderInitialJSON.value = json
+    // api.get returns a parsed object; SchemaBuilder expects a JSON string
+    builderInitialJSON.value = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
     showBuilder.value = true
     showForm.value = false
   } catch (e: any) {

@@ -1,0 +1,172 @@
+{
+  "id": "comic-books",
+  "displayName": "Comic Books",
+  "description": "Comic book and graphic novel collection with grading and key issue tracking",
+  "attributes": [
+    {
+      "name": "series",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Series Title",
+        "placeholder": "e.g. The Amazing Spider-Man, Saga, Watchmen",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "issueNumber",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Issue Number",
+        "placeholder": "e.g. 129",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "volume",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Volume",
+        "placeholder": "e.g. 1, 2",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "publisher",
+      "type": "enum",
+      "required": false,
+      "options": ["Marvel", "DC", "Image", "Dark Horse", "IDW", "Boom! Studios", "Valiant", "Archie", "Vertigo", "Dynamite", "Oni Press", "Fantagraphics", "Drawn & Quarterly", "Other"],
+      "display": {
+        "label": "Publisher",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "coverDate",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Cover Date",
+        "placeholder": "e.g. February 1974",
+        "group": "Identification",
+        "order": 5
+      }
+    },
+    {
+      "name": "writer",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Writer",
+        "placeholder": "e.g. Gerry Conway, Brian K. Vaughan",
+        "group": "Creators",
+        "order": 6
+      }
+    },
+    {
+      "name": "artist",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Artist",
+        "placeholder": "e.g. Ross Andru, Fiona Staples",
+        "group": "Creators",
+        "order": 7
+      }
+    },
+    {
+      "name": "coverArtist",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Cover Artist",
+        "placeholder": "e.g. Gil Kane",
+        "group": "Creators",
+        "order": 8
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Gem Mint (10.0)", "Mint (9.9)", "Near Mint/Mint (9.8)", "Near Mint+ (9.6)", "Near Mint (9.4)", "Near Mint- (9.2)", "Very Fine/Near Mint (9.0)", "Very Fine+ (8.5)", "Very Fine (8.0)", "Fine/Very Fine (7.0)", "Fine (6.0)", "Very Good (4.0)", "Good (2.0)", "Fair (1.0)", "Poor (0.5)"],
+      "display": {
+        "label": "Condition / Grade",
+        "group": "Grading",
+        "order": 9
+      }
+    },
+    {
+      "name": "gradingService",
+      "type": "enum",
+      "required": false,
+      "options": ["CGC", "CBCS", "PGX", "Raw (Ungraded)"],
+      "display": {
+        "label": "Grading Service",
+        "group": "Grading",
+        "order": 10
+      }
+    },
+    {
+      "name": "certNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Certification Number",
+        "placeholder": "e.g. CGC 1234567001",
+        "group": "Grading",
+        "order": 11
+      }
+    },
+    {
+      "name": "coverVariant",
+      "type": "enum",
+      "required": false,
+      "options": ["Regular", "Variant", "Incentive (1:25)", "Incentive (1:50)", "Incentive (1:100)", "Sketch", "Foil", "Virgin", "Convention Exclusive", "Store Exclusive"],
+      "display": {
+        "label": "Cover Variant",
+        "group": "Details",
+        "order": 12
+      }
+    },
+    {
+      "name": "isKeyIssue",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Key Issue",
+        "group": "Details",
+        "order": 13
+      }
+    },
+    {
+      "name": "keyIssueReason",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Key Issue Significance",
+        "placeholder": "e.g. First appearance of Punisher",
+        "group": "Details",
+        "order": 14
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Defects, restoration, provenance",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 15
+      }
+    }
+  ]
+}

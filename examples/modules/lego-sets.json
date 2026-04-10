@@ -1,0 +1,159 @@
+{
+  "id": "lego-sets",
+  "displayName": "LEGO Sets",
+  "description": "LEGO set collection with completeness tracking and theme classification",
+  "attributes": [
+    {
+      "name": "setNumber",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Set Number",
+        "placeholder": "e.g. 75192, 10294, 21330",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "theme",
+      "type": "enum",
+      "required": true,
+      "options": ["Star Wars", "Technic", "Creator Expert / Icons", "Architecture", "Ideas", "City", "Harry Potter", "Marvel", "DC", "Speed Champions", "Ninjago", "Friends", "Duplo", "Botanical Collection", "Art", "Minecraft", "Lord of the Rings", "Indiana Jones", "Jurassic World", "Classic Space", "Castle", "Pirates", "Bionicle", "Mindstorms", "Other"],
+      "display": {
+        "label": "Theme",
+        "group": "Classification",
+        "order": 2
+      }
+    },
+    {
+      "name": "releaseYear",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Release Year",
+        "placeholder": "e.g. 2023",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "pieceCount",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Piece Count",
+        "placeholder": "e.g. 7541",
+        "group": "Details",
+        "order": 4
+      }
+    },
+    {
+      "name": "minifigureCount",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Minifigure Count",
+        "placeholder": "e.g. 4",
+        "group": "Details",
+        "order": 5
+      }
+    },
+    {
+      "name": "exclusiveMinifigures",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Exclusive Minifigures",
+        "placeholder": "e.g. Han Solo (Carbonite), Exclusive Luke Skywalker",
+        "group": "Details",
+        "order": 6
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Sealed", "Open - Complete", "Open - Mostly Complete", "Open - Incomplete", "Built (On Display)", "Parted Out", "Box Only"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 7
+      }
+    },
+    {
+      "name": "boxCondition",
+      "type": "enum",
+      "required": false,
+      "options": ["Mint", "Near Mint", "Very Good", "Good", "Fair", "Damaged", "Missing"],
+      "display": {
+        "label": "Box Condition",
+        "group": "Condition",
+        "order": 8
+      }
+    },
+    {
+      "name": "hasInstructions",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Includes Instructions",
+        "group": "Completeness",
+        "order": 9
+      }
+    },
+    {
+      "name": "hasAllMinifigures",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "All Minifigures Present",
+        "group": "Completeness",
+        "order": 10
+      }
+    },
+    {
+      "name": "hasStickers",
+      "type": "enum",
+      "required": false,
+      "options": ["Unapplied (Included)", "Applied", "Missing", "N/A (Printed Parts)"],
+      "display": {
+        "label": "Sticker Status",
+        "group": "Completeness",
+        "order": 11
+      }
+    },
+    {
+      "name": "isRetired",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Retired Set",
+        "group": "Value",
+        "order": 12
+      }
+    },
+    {
+      "name": "retailPrice",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Original Retail Price",
+        "placeholder": "e.g. 849.99",
+        "group": "Value",
+        "order": 13
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Missing pieces, display setup, modification details",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 14
+      }
+    }
+  ]
+}

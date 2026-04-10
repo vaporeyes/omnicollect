@@ -1,0 +1,191 @@
+{
+  "id": "synthesizers",
+  "displayName": "Synthesizers",
+  "description": "Synthesizer and electronic instrument collection including analog, digital, and modular",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Brand",
+        "placeholder": "e.g. Teenage Engineering, Moog, Roland, Sequential",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. OP-1 Field, Minimoog Model D, Juno-106",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year of Manufacture",
+        "placeholder": "e.g. 2022",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "type",
+      "type": "enum",
+      "required": true,
+      "options": ["Analog Synthesizer", "Digital Synthesizer", "Hybrid Synthesizer", "FM Synthesizer", "Wavetable Synthesizer", "Modular Synthesizer", "Semi-Modular Synthesizer", "Sampler", "Groovebox", "Drum Machine", "Portable / All-in-One", "Vocoder", "String Machine", "Organ"],
+      "display": {
+        "label": "Type",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "polyphony",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Polyphony",
+        "placeholder": "e.g. Monophonic, 6-Voice, 128-Voice",
+        "group": "Specs",
+        "order": 6
+      }
+    },
+    {
+      "name": "keys",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Number of Keys",
+        "placeholder": "e.g. 25, 37, 49, 61, 88 (0 for keyless)",
+        "group": "Specs",
+        "order": 7
+      }
+    },
+    {
+      "name": "keyType",
+      "type": "enum",
+      "required": false,
+      "options": ["Full-Size Weighted", "Full-Size Semi-Weighted", "Full-Size Unweighted", "Mini Keys", "Slim Keys", "Keyless / Pads", "Ribbon Controller"],
+      "display": {
+        "label": "Key Type",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "oscillators",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Oscillators / Sound Engine",
+        "placeholder": "e.g. 2 VCO, 4-Operator FM, Supersaw",
+        "group": "Specs",
+        "order": 9
+      }
+    },
+    {
+      "name": "filters",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Filter Type",
+        "placeholder": "e.g. Moog Ladder, Roland IR3109, Curtis CEM3320",
+        "group": "Specs",
+        "order": 10
+      }
+    },
+    {
+      "name": "connectivity",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Connectivity",
+        "placeholder": "e.g. MIDI, USB-C, CV/Gate, Bluetooth",
+        "group": "Specs",
+        "order": 11
+      }
+    },
+    {
+      "name": "hasSequencer",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Built-in Sequencer",
+        "group": "Features",
+        "order": 12
+      }
+    },
+    {
+      "name": "hasEffects",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Built-in Effects",
+        "group": "Features",
+        "order": 13
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Sealed", "Mint", "Excellent", "Very Good", "Good", "Fair", "For Parts / Repair"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 14
+      }
+    },
+    {
+      "name": "firmwareVersion",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Firmware Version",
+        "placeholder": "e.g. 1.5.2",
+        "group": "Details",
+        "order": 15
+      }
+    },
+    {
+      "name": "hasOriginalPackaging",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Original Packaging",
+        "group": "Details",
+        "order": 16
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Modifications, battery condition, known issues",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 17
+      }
+    }
+  ]
+}

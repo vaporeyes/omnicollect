@@ -1,0 +1,168 @@
+{
+  "id": "audio-equipment",
+  "displayName": "Audio Equipment",
+  "description": "Mixers, interfaces, monitors, controllers, and studio gear",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Brand",
+        "placeholder": "e.g. Yamaha, Universal Audio, Ableton, Focusrite",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. MG12XU, Apollo Twin X, Push 3",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year of Manufacture",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "category",
+      "type": "enum",
+      "required": true,
+      "options": ["Mixer (Analog)", "Mixer (Digital)", "Audio Interface", "MIDI Controller", "Monitor Controller", "Studio Monitor", "Headphones", "Microphone", "Preamp", "Compressor", "EQ", "Effects Processor", "Power Amplifier", "DI Box", "Cable / Adapter", "Rack Unit", "Other"],
+      "display": {
+        "label": "Category",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "inputChannels",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Input Channels",
+        "placeholder": "e.g. 12, 2, 8",
+        "group": "Specs",
+        "order": 6
+      }
+    },
+    {
+      "name": "outputChannels",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Output Channels",
+        "placeholder": "e.g. 2, 4, 8",
+        "group": "Specs",
+        "order": 7
+      }
+    },
+    {
+      "name": "connectivity",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Connectivity",
+        "placeholder": "e.g. USB-C, Thunderbolt, XLR, TRS, ADAT",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "sampleRate",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Max Sample Rate / Bit Depth",
+        "placeholder": "e.g. 192kHz / 24-bit",
+        "group": "Specs",
+        "order": 9
+      }
+    },
+    {
+      "name": "powerType",
+      "type": "enum",
+      "required": false,
+      "options": ["AC Mains", "USB Bus Powered", "Battery", "Phantom Power (48V)", "DC Adapter", "PoE"],
+      "display": {
+        "label": "Power Source",
+        "group": "Specs",
+        "order": 10
+      }
+    },
+    {
+      "name": "hasPhantomPower",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Phantom Power (48V)",
+        "group": "Features",
+        "order": 11
+      }
+    },
+    {
+      "name": "hasBuiltInEffects",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Built-in Effects",
+        "group": "Features",
+        "order": 12
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Sealed", "Mint", "Excellent", "Very Good", "Good", "Fair", "For Parts / Repair"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 13
+      }
+    },
+    {
+      "name": "hasOriginalPackaging",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Original Packaging",
+        "group": "Details",
+        "order": 14
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Firmware version, included accessories, rack mount info",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 15
+      }
+    }
+  ]
+}

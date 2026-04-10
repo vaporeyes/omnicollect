@@ -1,0 +1,170 @@
+{
+  "id": "video-games",
+  "displayName": "Video Games",
+  "description": "Video game collection across all platforms and formats",
+  "attributes": [
+    {
+      "name": "platform",
+      "type": "enum",
+      "required": true,
+      "options": ["PlayStation 5", "PlayStation 4", "PlayStation 3", "PlayStation 2", "PlayStation 1", "Xbox Series X/S", "Xbox One", "Xbox 360", "Xbox", "Nintendo Switch", "Wii U", "Wii", "GameCube", "Nintendo 64", "SNES", "NES", "Game Boy / Color", "Game Boy Advance", "Nintendo DS", "Nintendo 3DS", "Sega Genesis", "Sega Dreamcast", "Sega Saturn", "PSP", "PS Vita", "Steam Deck", "PC", "Atari 2600", "Neo Geo", "TurboGrafx-16", "Other"],
+      "display": {
+        "label": "Platform",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "developer",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Developer",
+        "placeholder": "e.g. Naughty Dog, FromSoftware, Nintendo",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "publisher",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Publisher",
+        "placeholder": "e.g. Sony, Nintendo, Bandai Namco",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "releaseYear",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Release Year",
+        "placeholder": "e.g. 2020",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "genre",
+      "type": "enum",
+      "required": false,
+      "options": ["Action", "Adventure", "RPG", "JRPG", "Action RPG", "Platformer", "Fighting", "Shooter (FPS)", "Shooter (TPS)", "Racing", "Sports", "Puzzle", "Strategy", "Simulation", "Survival Horror", "Stealth", "Rhythm", "Visual Novel", "Metroidvania", "Roguelike", "Battle Royale", "MMO", "Sandbox", "Party", "Educational", "Other"],
+      "display": {
+        "label": "Genre",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "region",
+      "type": "enum",
+      "required": false,
+      "options": ["NTSC-U (North America)", "PAL (Europe/Australia)", "NTSC-J (Japan)", "Region Free", "Other"],
+      "display": {
+        "label": "Region",
+        "group": "Classification",
+        "order": 6
+      }
+    },
+    {
+      "name": "format",
+      "type": "enum",
+      "required": false,
+      "options": ["Physical (Disc)", "Physical (Cartridge)", "Physical (Card)", "Digital", "Collector's Edition", "Limited Run", "Special Edition", "Game of the Year Edition"],
+      "display": {
+        "label": "Format / Edition",
+        "group": "Classification",
+        "order": 7
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Sealed / New", "Complete in Box (CIB)", "Loose (Cart/Disc Only)", "Box Only", "Manual Only", "Graded (WATA/VGA)"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 8
+      }
+    },
+    {
+      "name": "boxCondition",
+      "type": "enum",
+      "required": false,
+      "options": ["Mint", "Near Mint", "Very Good", "Good", "Fair", "Poor", "Missing"],
+      "display": {
+        "label": "Box / Case Condition",
+        "group": "Condition",
+        "order": 9
+      }
+    },
+    {
+      "name": "hasManual",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Includes Manual",
+        "group": "Completeness",
+        "order": 10
+      }
+    },
+    {
+      "name": "hasInserts",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Includes Inserts / Extras",
+        "group": "Completeness",
+        "order": 11
+      }
+    },
+    {
+      "name": "isBlackLabel",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Black Label / First Print",
+        "group": "Collectibility",
+        "order": 12
+      }
+    },
+    {
+      "name": "gradingService",
+      "type": "enum",
+      "required": false,
+      "options": ["WATA", "VGA", "CGC Games", "Ungraded"],
+      "display": {
+        "label": "Grading Service",
+        "group": "Collectibility",
+        "order": 13
+      }
+    },
+    {
+      "name": "gradedScore",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Graded Score",
+        "placeholder": "e.g. 9.4 A+, 85+",
+        "group": "Collectibility",
+        "order": 14
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Variant, promo copy, disc condition, included DLC codes",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 15
+      }
+    }
+  ]
+}

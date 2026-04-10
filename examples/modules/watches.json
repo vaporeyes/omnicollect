@@ -1,0 +1,192 @@
+{
+  "id": "watches",
+  "displayName": "Watches",
+  "description": "Watch collection including mechanical, quartz, and smartwatches",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Brand",
+        "placeholder": "e.g. Rolex, Omega, Seiko, Casio, Swatch",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. Submariner 124060, Speedmaster, SKX007",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "referenceNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Reference Number",
+        "placeholder": "e.g. 124060, 326.30.40.50.01.002",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year of Production",
+        "group": "Identification",
+        "order": 5
+      }
+    },
+    {
+      "name": "movement",
+      "type": "enum",
+      "required": true,
+      "options": ["Automatic (Mechanical)", "Manual Wind", "Quartz", "Solar / Eco-Drive", "Kinetic", "Spring Drive", "Smartwatch", "Meca-Quartz"],
+      "display": {
+        "label": "Movement Type",
+        "group": "Specs",
+        "order": 6
+      }
+    },
+    {
+      "name": "caliber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Caliber / Movement",
+        "placeholder": "e.g. 3230, Cal. 321, 7S26",
+        "group": "Specs",
+        "order": 7
+      }
+    },
+    {
+      "name": "caseMaterial",
+      "type": "enum",
+      "required": false,
+      "options": ["Stainless Steel", "Titanium", "Gold (Yellow)", "Gold (White)", "Gold (Rose)", "Platinum", "Ceramic", "Carbon Fiber", "Bronze", "Resin / Plastic", "Two-Tone", "Other"],
+      "display": {
+        "label": "Case Material",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "caseSize",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Case Diameter (mm)",
+        "placeholder": "e.g. 41, 36, 42",
+        "group": "Specs",
+        "order": 9
+      }
+    },
+    {
+      "name": "waterResistance",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Water Resistance",
+        "placeholder": "e.g. 300m, 100m, 50m",
+        "group": "Specs",
+        "order": 10
+      }
+    },
+    {
+      "name": "dialColor",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Dial Color",
+        "placeholder": "e.g. Black, Blue Sunburst, Salmon",
+        "group": "Appearance",
+        "order": 11
+      }
+    },
+    {
+      "name": "strapBracelet",
+      "type": "enum",
+      "required": false,
+      "options": ["Metal Bracelet", "Leather Strap", "Rubber / Silicone Strap", "NATO Strap", "Mesh Bracelet", "Fabric / Canvas", "Resin Band"],
+      "display": {
+        "label": "Strap / Bracelet",
+        "group": "Appearance",
+        "order": 12
+      }
+    },
+    {
+      "name": "complications",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Complications",
+        "placeholder": "e.g. Date, Chronograph, GMT, Moon Phase, Tourbillon",
+        "group": "Specs",
+        "order": 13
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Unworn", "Mint", "Excellent", "Very Good", "Good", "Fair", "Poor / Non-Running"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 14
+      }
+    },
+    {
+      "name": "serviceDate",
+      "type": "date",
+      "required": false,
+      "display": {
+        "label": "Last Service Date",
+        "group": "Condition",
+        "order": 15
+      }
+    },
+    {
+      "name": "hasBoxPapers",
+      "type": "enum",
+      "required": false,
+      "options": ["Full Set (Box + Papers)", "Box Only", "Papers Only", "None"],
+      "display": {
+        "label": "Box & Papers",
+        "group": "Completeness",
+        "order": 16
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Running accuracy, polishing history, provenance",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 17
+      }
+    }
+  ]
+}

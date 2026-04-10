@@ -1,0 +1,195 @@
+{
+  "id": "guitars",
+  "displayName": "Guitars",
+  "description": "Guitar collection including electric, acoustic, and bass instruments",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Brand / Manufacturer",
+        "placeholder": "e.g. Fender, Gibson, Martin, PRS",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. Stratocaster, Les Paul Standard, D-28",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "placeholder": "e.g. V1234567",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year Made",
+        "placeholder": "e.g. 1962",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "type",
+      "type": "enum",
+      "required": true,
+      "options": ["Solid Body Electric", "Semi-Hollow Electric", "Hollow Body Electric", "Acoustic Steel String", "Acoustic Nylon / Classical", "Acoustic-Electric", "Bass Electric", "Bass Acoustic", "Lap Steel", "Pedal Steel", "Resonator", "12-String", "Baritone", "Travel / Mini"],
+      "display": {
+        "label": "Type",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "bodyWood",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Body Wood",
+        "placeholder": "e.g. Alder, Mahogany, Spruce Top/Rosewood Back",
+        "group": "Specs",
+        "order": 6
+      }
+    },
+    {
+      "name": "neckWood",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Neck Wood",
+        "placeholder": "e.g. Maple, Mahogany",
+        "group": "Specs",
+        "order": 7
+      }
+    },
+    {
+      "name": "fretboardWood",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Fretboard",
+        "placeholder": "e.g. Rosewood, Ebony, Maple",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "numberOfFrets",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Number of Frets",
+        "placeholder": "e.g. 22, 24",
+        "group": "Specs",
+        "order": 9
+      }
+    },
+    {
+      "name": "scaleLength",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Scale Length",
+        "placeholder": "e.g. 25.5\", 24.75\"",
+        "group": "Specs",
+        "order": 10
+      }
+    },
+    {
+      "name": "pickupConfig",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Pickup Configuration",
+        "placeholder": "e.g. SSS, HH, HSS, P/J",
+        "group": "Electronics",
+        "order": 11
+      }
+    },
+    {
+      "name": "finish",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Finish / Color",
+        "placeholder": "e.g. Sunburst, Olympic White, Natural",
+        "group": "Appearance",
+        "order": 12
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Unplayed", "Mint", "Excellent", "Very Good", "Good", "Fair", "Player Grade", "Project / Parts"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 13
+      }
+    },
+    {
+      "name": "countryOfOrigin",
+      "type": "enum",
+      "required": false,
+      "options": ["USA", "Japan", "Mexico", "Korea", "China", "Indonesia", "Canada", "Germany", "Czech Republic", "Spain", "Other"],
+      "display": {
+        "label": "Country of Manufacture",
+        "group": "Details",
+        "order": 14
+      }
+    },
+    {
+      "name": "hasOriginalCase",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Includes Original Case",
+        "group": "Details",
+        "order": 15
+      }
+    },
+    {
+      "name": "modifications",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Modifications",
+        "placeholder": "Pickup swaps, refrets, refinish, etc.",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 16
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Provenance, playability, storage details",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 17
+      }
+    }
+  ]
+}

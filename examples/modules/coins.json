@@ -1,0 +1,160 @@
+{
+  "id": "coins",
+  "displayName": "Coins",
+  "description": "Numismatic collection including circulated, uncirculated, and proof coins",
+  "attributes": [
+    {
+      "name": "country",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Country of Origin",
+        "placeholder": "e.g. United States, Canada, United Kingdom",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "denomination",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Denomination",
+        "placeholder": "e.g. Quarter Dollar, 1 Penny, 5 Francs",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": true,
+      "display": {
+        "label": "Year Minted",
+        "placeholder": "e.g. 1964",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "mintMark",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Mint Mark",
+        "placeholder": "e.g. D, S, P, W",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "composition",
+      "type": "enum",
+      "required": false,
+      "options": ["Gold", "Silver", "Copper", "Nickel", "Bronze", "Platinum", "Clad", "Zinc", "Other"],
+      "display": {
+        "label": "Composition",
+        "group": "Details",
+        "order": 5
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Proof", "Mint State (MS)", "About Uncirculated (AU)", "Extremely Fine (EF)", "Very Fine (VF)", "Fine (F)", "Very Good (VG)", "Good (G)", "About Good (AG)", "Poor (P)"],
+      "display": {
+        "label": "Condition / Grade",
+        "group": "Grading",
+        "order": 6
+      }
+    },
+    {
+      "name": "certifiedGrade",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Certified Grade",
+        "placeholder": "e.g. MS-65, PF-70",
+        "group": "Grading",
+        "order": 7
+      }
+    },
+    {
+      "name": "gradingService",
+      "type": "enum",
+      "required": false,
+      "options": ["PCGS", "NGC", "ANACS", "ICG", "Ungraded"],
+      "display": {
+        "label": "Grading Service",
+        "group": "Grading",
+        "order": 8
+      }
+    },
+    {
+      "name": "isProof",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Proof Coin",
+        "group": "Details",
+        "order": 9
+      }
+    },
+    {
+      "name": "isError",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Error / Variety",
+        "group": "Details",
+        "order": 10
+      }
+    },
+    {
+      "name": "errorType",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Error Description",
+        "placeholder": "e.g. Double Die Obverse, Off-Center Strike",
+        "group": "Details",
+        "order": 11
+      }
+    },
+    {
+      "name": "weight",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Weight (grams)",
+        "placeholder": "e.g. 6.25",
+        "group": "Physical",
+        "order": 12
+      }
+    },
+    {
+      "name": "diameter",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Diameter (mm)",
+        "placeholder": "e.g. 24.3",
+        "group": "Physical",
+        "order": 13
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Provenance, storage location, or other details",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 14
+      }
+    }
+  ]
+}

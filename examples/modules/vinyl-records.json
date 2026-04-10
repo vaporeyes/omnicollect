@@ -1,0 +1,162 @@
+{
+  "id": "vinyl-records",
+  "displayName": "Vinyl Records",
+  "description": "Vinyl record collection including LPs, 45s, and 78s with pressing details",
+  "attributes": [
+    {
+      "name": "artist",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Artist / Band",
+        "placeholder": "e.g. Miles Davis, Radiohead",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "label",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Record Label",
+        "placeholder": "e.g. Blue Note, Columbia, Warp",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "catalogNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Catalog Number",
+        "placeholder": "e.g. BLP 1595, OC 044",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Release Year",
+        "placeholder": "e.g. 1959",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "genre",
+      "type": "enum",
+      "required": false,
+      "options": ["Rock", "Jazz", "Blues", "Classical", "Electronic", "Hip-Hop", "R&B / Soul", "Country", "Folk", "Punk", "Metal", "Reggae", "Latin", "World", "Soundtrack", "Spoken Word", "Other"],
+      "display": {
+        "label": "Genre",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "format",
+      "type": "enum",
+      "required": false,
+      "options": ["LP (12\")", "EP (12\")", "Single (7\")", "Single (12\")", "78 RPM", "10\" LP", "Box Set", "Picture Disc", "Colored Vinyl", "Flexi-disc"],
+      "display": {
+        "label": "Format",
+        "group": "Classification",
+        "order": 6
+      }
+    },
+    {
+      "name": "speed",
+      "type": "enum",
+      "required": false,
+      "options": ["33 RPM", "45 RPM", "78 RPM"],
+      "display": {
+        "label": "Speed",
+        "group": "Classification",
+        "order": 7
+      }
+    },
+    {
+      "name": "pressing",
+      "type": "enum",
+      "required": false,
+      "options": ["Original", "First Pressing", "Reissue", "Remaster", "Limited Edition", "Promo / DJ Copy", "Test Pressing", "Bootleg"],
+      "display": {
+        "label": "Pressing",
+        "group": "Details",
+        "order": 8
+      }
+    },
+    {
+      "name": "country",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Country of Pressing",
+        "placeholder": "e.g. US, UK, Japan",
+        "group": "Details",
+        "order": 9
+      }
+    },
+    {
+      "name": "mediaCondition",
+      "type": "enum",
+      "required": true,
+      "options": ["Mint (M)", "Near Mint (NM)", "Very Good Plus (VG+)", "Very Good (VG)", "Good Plus (G+)", "Good (G)", "Fair (F)", "Poor (P)"],
+      "display": {
+        "label": "Media Condition",
+        "group": "Condition",
+        "order": 10
+      }
+    },
+    {
+      "name": "sleeveCondition",
+      "type": "enum",
+      "required": false,
+      "options": ["Mint (M)", "Near Mint (NM)", "Very Good Plus (VG+)", "Very Good (VG)", "Good Plus (G+)", "Good (G)", "Fair (F)", "Poor (P)", "Generic", "Missing"],
+      "display": {
+        "label": "Sleeve Condition",
+        "group": "Condition",
+        "order": 11
+      }
+    },
+    {
+      "name": "matrixNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Matrix / Runout Number",
+        "placeholder": "Stamped in the dead wax",
+        "group": "Details",
+        "order": 12
+      }
+    },
+    {
+      "name": "discogsId",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Discogs Release ID",
+        "placeholder": "e.g. r12345678",
+        "group": "Reference",
+        "order": 13
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Surface noise, warps, inserts included, etc.",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 14
+      }
+    }
+  ]
+}

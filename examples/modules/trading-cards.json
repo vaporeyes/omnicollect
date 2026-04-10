@@ -1,0 +1,158 @@
+{
+  "id": "trading-cards",
+  "displayName": "Trading Cards",
+  "description": "Trading card collection covering sports, TCG, and non-sport cards",
+  "attributes": [
+    {
+      "name": "category",
+      "type": "enum",
+      "required": true,
+      "options": ["Baseball", "Basketball", "Football", "Hockey", "Soccer", "Pokemon", "Magic: The Gathering", "Yu-Gi-Oh!", "Dragon Ball", "One Piece TCG", "Marvel", "Star Wars", "Garbage Pail Kids", "Non-Sport (Other)", "Sports (Other)"],
+      "display": {
+        "label": "Category",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "setName",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Set / Product",
+        "placeholder": "e.g. 2023 Topps Chrome, Scarlet & Violet 151, Alpha",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "cardNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Card Number",
+        "placeholder": "e.g. #150, SV049/SV094",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "player",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Player / Character",
+        "placeholder": "e.g. Shohei Ohtani, Charizard, Black Lotus",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "year",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year",
+        "placeholder": "e.g. 2023",
+        "group": "Identification",
+        "order": 5
+      }
+    },
+    {
+      "name": "parallel",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Parallel / Variant",
+        "placeholder": "e.g. Refractor, Gold /50, Rainbow Rare, 1st Edition",
+        "group": "Details",
+        "order": 6
+      }
+    },
+    {
+      "name": "isRookie",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Rookie Card",
+        "group": "Details",
+        "order": 7
+      }
+    },
+    {
+      "name": "isAutographed",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Autographed",
+        "group": "Details",
+        "order": 8
+      }
+    },
+    {
+      "name": "isPatched",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Game-Used Patch / Relic",
+        "group": "Details",
+        "order": 9
+      }
+    },
+    {
+      "name": "serialNumbered",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Numbered",
+        "placeholder": "e.g. /25, /99, /199, 1/1",
+        "group": "Details",
+        "order": 10
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Gem Mint (10)", "Mint (9)", "Near Mint-Mint (8)", "Near Mint (7)", "Excellent-Mint (6)", "Excellent (5)", "Very Good (4)", "Good (3)", "Raw - Near Mint", "Raw - Lightly Played", "Raw - Moderately Played", "Raw - Heavily Played"],
+      "display": {
+        "label": "Condition / Grade",
+        "group": "Grading",
+        "order": 11
+      }
+    },
+    {
+      "name": "gradingService",
+      "type": "enum",
+      "required": false,
+      "options": ["PSA", "BGS (Beckett)", "SGC", "CGC Cards", "Raw (Ungraded)"],
+      "display": {
+        "label": "Grading Service",
+        "group": "Grading",
+        "order": 12
+      }
+    },
+    {
+      "name": "certNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Certification Number",
+        "group": "Grading",
+        "order": 13
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Centering, surface quality, pop report count",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 14
+      }
+    }
+  ]
+}

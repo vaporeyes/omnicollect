@@ -1,0 +1,159 @@
+{
+  "id": "sneakers",
+  "displayName": "Sneakers",
+  "description": "Sneaker and shoe collection with sizing, colorway, and resale details",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "enum",
+      "required": true,
+      "options": ["Nike", "Jordan", "Adidas", "New Balance", "Yeezy", "Asics", "Puma", "Converse", "Vans", "Reebok", "Salomon", "On Running", "Hoka", "Other"],
+      "display": {
+        "label": "Brand",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. Air Jordan 1 Retro High OG, Dunk Low, 550",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "colorway",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Colorway",
+        "placeholder": "e.g. Chicago, Panda, Bred, University Blue",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "styleCode",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Style Code / SKU",
+        "placeholder": "e.g. DZ5485-612, BB550WT1",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "releaseDate",
+      "type": "date",
+      "required": false,
+      "display": {
+        "label": "Release Date",
+        "group": "Identification",
+        "order": 5
+      }
+    },
+    {
+      "name": "size",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Size (US)",
+        "placeholder": "e.g. 10, 9.5, 11W",
+        "group": "Details",
+        "order": 6
+      }
+    },
+    {
+      "name": "gender",
+      "type": "enum",
+      "required": false,
+      "options": ["Men's", "Women's", "GS (Grade School)", "PS (Preschool)", "TD (Toddler)", "Unisex"],
+      "display": {
+        "label": "Gender / Sizing",
+        "group": "Details",
+        "order": 7
+      }
+    },
+    {
+      "name": "collaboration",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Collaboration",
+        "placeholder": "e.g. Travis Scott, Off-White, Stussy, A Ma Maniere",
+        "group": "Details",
+        "order": 8
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["Deadstock (DS)", "VNDS (Very Near Deadstock)", "Lightly Worn", "Used - Good", "Used - Fair", "Beaters", "Custom / Modified"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 9
+      }
+    },
+    {
+      "name": "hasOriginalBox",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Original Box",
+        "group": "Completeness",
+        "order": 10
+      }
+    },
+    {
+      "name": "hasExtraLaces",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Extra Laces Included",
+        "group": "Completeness",
+        "order": 11
+      }
+    },
+    {
+      "name": "retailPrice",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Retail Price",
+        "placeholder": "e.g. 170",
+        "group": "Value",
+        "order": 12
+      }
+    },
+    {
+      "name": "purchaseSource",
+      "type": "enum",
+      "required": false,
+      "options": ["Retail (SNKRS / Web)", "Retail (In-Store)", "StockX", "GOAT", "eBay", "Grailed", "Private Sale", "Trade", "Gift", "Other"],
+      "display": {
+        "label": "Purchase Source",
+        "group": "Value",
+        "order": 13
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Yellowing, sole separation, heel drag, special features",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 14
+      }
+    }
+  ]
+}

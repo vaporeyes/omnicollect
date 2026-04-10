@@ -1,0 +1,169 @@
+{
+  "id": "books",
+  "displayName": "Books",
+  "description": "Book collection including first editions, signed copies, and rare volumes",
+  "attributes": [
+    {
+      "name": "author",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Author",
+        "placeholder": "e.g. Cormac McCarthy",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "isbn",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "ISBN",
+        "placeholder": "e.g. 978-0-394-53484-1",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "publisher",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Publisher",
+        "placeholder": "e.g. Random House, Penguin",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "yearPublished",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Year Published",
+        "placeholder": "e.g. 1985",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "genre",
+      "type": "enum",
+      "required": false,
+      "options": ["Fiction", "Non-Fiction", "Science Fiction", "Fantasy", "Mystery", "Horror", "Biography", "History", "Poetry", "Art", "Photography", "Philosophy", "Science", "Technical", "Children's", "Graphic Novel", "Other"],
+      "display": {
+        "label": "Genre",
+        "group": "Classification",
+        "order": 5
+      }
+    },
+    {
+      "name": "format",
+      "type": "enum",
+      "required": false,
+      "options": ["Hardcover", "Paperback", "Leather Bound", "Board Book", "Spiral", "Loose Leaf"],
+      "display": {
+        "label": "Format",
+        "group": "Classification",
+        "order": 6
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["As New", "Fine", "Near Fine", "Very Good", "Good", "Fair", "Poor"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 7
+      }
+    },
+    {
+      "name": "dustJacketCondition",
+      "type": "enum",
+      "required": false,
+      "options": ["As New", "Fine", "Near Fine", "Very Good", "Good", "Fair", "Poor", "Missing"],
+      "display": {
+        "label": "Dust Jacket Condition",
+        "group": "Condition",
+        "order": 8
+      }
+    },
+    {
+      "name": "isFirstEdition",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "First Edition",
+        "group": "Collectibility",
+        "order": 9
+      }
+    },
+    {
+      "name": "isFirstPrinting",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "First Printing",
+        "group": "Collectibility",
+        "order": 10
+      }
+    },
+    {
+      "name": "isSigned",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Signed by Author",
+        "group": "Collectibility",
+        "order": 11
+      }
+    },
+    {
+      "name": "printRun",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Print Run / Edition",
+        "placeholder": "e.g. First Edition, Second Printing",
+        "group": "Collectibility",
+        "order": 12
+      }
+    },
+    {
+      "name": "language",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Language",
+        "placeholder": "e.g. English, French, Japanese",
+        "group": "Details",
+        "order": 13
+      }
+    },
+    {
+      "name": "pageCount",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Page Count",
+        "group": "Details",
+        "order": 14
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Provenance, inscriptions, or other details",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 15
+      }
+    }
+  ]
+}

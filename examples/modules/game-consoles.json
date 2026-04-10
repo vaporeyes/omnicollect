@@ -1,0 +1,169 @@
+{
+  "id": "game-consoles",
+  "displayName": "Game Consoles",
+  "description": "Video game console and handheld hardware collection",
+  "attributes": [
+    {
+      "name": "brand",
+      "type": "enum",
+      "required": true,
+      "options": ["Sony", "Microsoft", "Nintendo", "Sega", "Atari", "SNK", "NEC", "Valve", "Analogue", "Other"],
+      "display": {
+        "label": "Brand",
+        "group": "Identification",
+        "order": 1
+      }
+    },
+    {
+      "name": "model",
+      "type": "string",
+      "required": true,
+      "display": {
+        "label": "Model",
+        "placeholder": "e.g. PlayStation 5, Nintendo Switch OLED, Analogue Pocket",
+        "group": "Identification",
+        "order": 2
+      }
+    },
+    {
+      "name": "revision",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Revision / SKU",
+        "placeholder": "e.g. CFI-1215A, HAC-001(-01), Slim, Pro",
+        "group": "Identification",
+        "order": 3
+      }
+    },
+    {
+      "name": "serialNumber",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Serial Number",
+        "group": "Identification",
+        "order": 4
+      }
+    },
+    {
+      "name": "releaseYear",
+      "type": "number",
+      "required": false,
+      "display": {
+        "label": "Release Year",
+        "group": "Identification",
+        "order": 5
+      }
+    },
+    {
+      "name": "type",
+      "type": "enum",
+      "required": true,
+      "options": ["Home Console", "Handheld", "Hybrid (Home + Handheld)", "Micro Console", "Plug-and-Play", "FPGA Clone", "Emulation Device"],
+      "display": {
+        "label": "Type",
+        "group": "Classification",
+        "order": 6
+      }
+    },
+    {
+      "name": "color",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Color / Edition",
+        "placeholder": "e.g. Glacier White, Pikachu Edition, Halo Infinite LE",
+        "group": "Appearance",
+        "order": 7
+      }
+    },
+    {
+      "name": "storageCapacity",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Storage Capacity",
+        "placeholder": "e.g. 825GB SSD, 1TB, 64GB",
+        "group": "Specs",
+        "order": 8
+      }
+    },
+    {
+      "name": "region",
+      "type": "enum",
+      "required": false,
+      "options": ["North America", "Europe / PAL", "Japan", "Asia", "Region Free", "Other"],
+      "display": {
+        "label": "Region",
+        "group": "Classification",
+        "order": 9
+      }
+    },
+    {
+      "name": "condition",
+      "type": "enum",
+      "required": true,
+      "options": ["New / Sealed", "Complete in Box", "Loose (Console Only)", "Refurbished", "Modified", "For Parts / Repair"],
+      "display": {
+        "label": "Condition",
+        "group": "Condition",
+        "order": 10
+      }
+    },
+    {
+      "name": "isModified",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Modified / Modded",
+        "group": "Details",
+        "order": 11
+      }
+    },
+    {
+      "name": "modDescription",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Mod Details",
+        "placeholder": "e.g. IPS screen, HDMI mod, ODE, jailbroken",
+        "group": "Details",
+        "order": 12
+      }
+    },
+    {
+      "name": "includedAccessories",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Included Accessories",
+        "placeholder": "e.g. 2 controllers, power cable, HDMI cable",
+        "group": "Completeness",
+        "order": 13
+      }
+    },
+    {
+      "name": "isFunctional",
+      "type": "boolean",
+      "required": false,
+      "display": {
+        "label": "Fully Functional",
+        "group": "Condition",
+        "order": 14
+      }
+    },
+    {
+      "name": "notes",
+      "type": "string",
+      "required": false,
+      "display": {
+        "label": "Notes",
+        "placeholder": "Known issues, firmware version, cosmetic details",
+        "widget": "textarea",
+        "group": "Notes",
+        "order": 15
+      }
+    }
+  ]
+}
