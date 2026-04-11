@@ -37,13 +37,15 @@ func HandleShowcase(store storage.Store) http.HandlerFunc {
 			return
 		}
 
-		// For PostgresStore, temporarily set the search path to the showcase's tenant
+		// Use a per-request scoped store for the showcase's tenant to avoid
+		// racing with concurrent requests on shared store state.
+		tenantStore := store
 		if pgStore, ok := store.(*storage.PostgresStore); ok {
-			pgStore.SetTenantSchema(sc.TenantID)
+			tenantStore = pgStore.WithTenantSchema(sc.TenantID)
 		}
 
 		// Load items for this module
-		items, err := store.QueryItems("", sc.ModuleID, "", "")
+		items, err := tenantStore.QueryItems("", sc.ModuleID, "", "")
 		if err != nil {
 			w.WriteHeader(http.StatusOK)
 			RenderUnavailable(w)
@@ -52,7 +54,7 @@ func HandleShowcase(store storage.Store) http.HandlerFunc {
 
 		// Load module schema for attribute labels
 		var schema *storage.ModuleSchema
-		modules, err := store.GetModules()
+		modules, err := tenantStore.GetModules()
 		if err == nil {
 			for _, m := range modules {
 				if m.ID == sc.ModuleID {

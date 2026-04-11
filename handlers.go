@@ -102,7 +102,7 @@ func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) 
 // Tags
 
 func (s *Server) handleGetAllTags(w http.ResponseWriter, r *http.Request) {
-	tags, err := s.app.store.GetAllTags()
+	tags, err := s.requestStore(r).GetAllTags()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -123,7 +123,7 @@ func (s *Server) handleRenameTag(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "oldName and newName are required")
 		return
 	}
-	count, err := s.app.store.RenameTag(body.OldName, body.NewName)
+	count, err := s.requestStore(r).RenameTag(body.OldName, body.NewName)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -137,7 +137,7 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "tag name is required")
 		return
 	}
-	count, err := s.app.store.DeleteTag(name)
+	count, err := s.requestStore(r).DeleteTag(name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -229,13 +229,13 @@ func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(tmpPath)
 
 	// Use SQLite-native backup if available, otherwise export via Store
-	if sqliteStore, ok := s.app.store.(*storage.SQLiteStore); ok {
+	if sqliteStore, ok := s.requestStore(r).(*storage.SQLiteStore); ok {
 		if err := createBackupArchive(tmpPath, sqliteStore.DB()); err != nil {
 			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
 			return
 		}
 	} else {
-		if err := createCloudBackup(tmpPath, s.app.store); err != nil {
+		if err := createCloudBackup(tmpPath, s.requestStore(r)); err != nil {
 			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
 			return
 		}
@@ -256,7 +256,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csv, err := s.app.store.ExportItemsCSV(body.IDs, toStorageModules(s.app.modules))
+	csv, err := s.requestStore(r).ExportItemsCSV(body.IDs, toStorageModules(s.app.modules))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -382,15 +382,16 @@ func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
 	result.Warnings = append(result.Warnings, checkMissingModules(items, modules)...)
 
 	// Execute the import
+	importStore := s.requestStore(r)
 	if req.Mode == "replace" {
-		if err := executeReplace(s.app.store, items, modules); err != nil {
+		if err := executeReplace(importStore, items, modules); err != nil {
 			writeError(w, http.StatusInternalServerError, "replace failed (rolled back): "+err.Error())
 			return
 		}
 		result.ItemsImported = len(items)
 		result.ModulesImported = len(modules)
 	} else {
-		processed, err := executeMerge(s.app.store, items, modules)
+		processed, err := executeMerge(importStore, items, modules)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "merge failed: "+err.Error())
 			return
@@ -407,7 +408,7 @@ func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
 	result.ImagesRestored = restored
 
 	// Reload modules in memory
-	if reloaded, err := s.app.store.GetModules(); err == nil {
+	if reloaded, err := importStore.GetModules(); err == nil {
 		s.app.modules = toMainModules(reloaded)
 	}
 
@@ -525,13 +526,14 @@ func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine tenant ID for the showcase record
+	store := s.requestStore(r)
 	tenantID := "default"
-	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+	if pgStore, ok := store.(*storage.PostgresStore); ok {
 		tenantID = pgStore.TenantSchema()
 	}
 
 	// Check if showcase already exists for this module (slug stability)
-	existing, err := s.app.store.GetShowcaseForModule(body.ModuleID)
+	existing, err := store.GetShowcaseForModule(body.ModuleID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -548,7 +550,7 @@ func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// First time: generate slug from module display name
 		moduleName := body.ModuleID
-		modules, err := s.app.store.GetModules()
+		modules, err := store.GetModules()
 		if err == nil {
 			for _, m := range modules {
 				if m.ID == body.ModuleID {
@@ -569,7 +571,7 @@ func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := s.app.store.UpsertShowcase(sc); err != nil {
+	if err := store.UpsertShowcase(sc); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -588,7 +590,7 @@ func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListShowcases(w http.ResponseWriter, r *http.Request) {
-	showcases, err := s.app.store.ListShowcases()
+	showcases, err := s.requestStore(r).ListShowcases()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -606,7 +608,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check database connectivity
-	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
+	if pgStore, ok := s.requestStore(r).(*storage.PostgresStore); ok {
 		if err := pgStore.Ping(context.Background()); err != nil {
 			result["status"] = "error"
 			result["database"] = "disconnected"

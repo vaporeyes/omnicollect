@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +14,18 @@ import (
 	"omnicollect/showcase"
 	"omnicollect/storage"
 )
+
+// storeCtxKey is the context key for per-request tenant-scoped stores.
+type storeCtxKey struct{}
+
+// requestStore returns the tenant-scoped store for the current request.
+// Falls back to s.app.store if no per-request store is set (local mode).
+func (s *Server) requestStore(r *http.Request) storage.Store {
+	if store, ok := r.Context().Value(storeCtxKey{}).(storage.Store); ok {
+		return store
+	}
+	return s.app.store
+}
 
 // Server wraps the App and provides HTTP routing.
 type Server struct {
@@ -100,14 +113,18 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// tenantScopeMiddleware sets the PostgresStore search_path to the tenant
-// extracted from the request context by the auth middleware.
+// tenantScopeMiddleware creates a per-request tenant-scoped store copy
+// from the tenant ID in the request context (set by auth middleware).
+// This avoids a race condition where concurrent requests for different
+// tenants would overwrite each other's search_path on the shared store.
 func (s *Server) tenantScopeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenantID := auth.TenantIDFromContext(r.Context())
 		if tenantID != "" {
 			if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
-				pgStore.SetTenantSchema(tenantID)
+				scoped := pgStore.WithTenantSchema(tenantID)
+				ctx := context.WithValue(r.Context(), storeCtxKey{}, storage.Store(scoped))
+				r = r.WithContext(ctx)
 			}
 		}
 		next.ServeHTTP(w, r)

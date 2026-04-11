@@ -84,12 +84,20 @@ func (s *PostgresStore) TenantSchema() string {
 	return s.tenantSchema
 }
 
-// SetTenantSchema changes the active tenant schema for subsequent operations.
-// Used by auth middleware to scope requests to the authenticated user's tenant.
+// SetTenantSchema changes the default tenant schema for subsequent operations.
+// Deprecated: prefer WithTenantSchema() for per-request isolation in concurrent servers.
+// Retained for backward compatibility with local-mode (single-tenant) usage.
 func (s *PostgresStore) SetTenantSchema(schema string) {
 	s.mu.Lock()
 	s.tenantSchema = schema
 	s.mu.Unlock()
+}
+
+// WithTenantSchema returns a shallow copy of the store scoped to the given tenant.
+// The copy shares the same *sql.DB connection pool but has its own tenantSchema,
+// so concurrent requests for different tenants do not race on shared state.
+func (s *PostgresStore) WithTenantSchema(schema string) *PostgresStore {
+	return &PostgresStore{db: s.db, tenantSchema: schema}
 }
 
 // ProvisionTenant creates the schema and DDL tables for a tenant if they
@@ -205,8 +213,13 @@ func (s *PostgresStore) initTenantSchema() error {
 	return nil
 }
 
+// setSearchPath sets the search path on a pooled connection.
+// Deprecated: only used internally as fallback. Prefer tenantQuery/tenantExec.
 func (s *PostgresStore) setSearchPath() error {
-	_, err := s.db.Exec(fmt.Sprintf("SET search_path TO %s", s.tenantSchema))
+	s.mu.RLock()
+	schema := s.tenantSchema
+	s.mu.RUnlock()
+	_, err := s.db.Exec(fmt.Sprintf("SET search_path TO %s", schema))
 	return err
 }
 
