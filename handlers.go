@@ -35,12 +35,12 @@ func (s *Server) handleGetItems(w http.ResponseWriter, r *http.Request) {
 	moduleID := r.URL.Query().Get("moduleId")
 	filtersJSON := r.URL.Query().Get("filters")
 	tagsJSON := r.URL.Query().Get("tags")
-	items, err := s.app.GetItems(query, moduleID, filtersJSON, tagsJSON)
+	items, err := s.requestStore(r).QueryItems(query, moduleID, filtersJSON, tagsJSON)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, items)
+	writeJSON(w, http.StatusOK, fromStorageItems(items))
 }
 
 func (s *Server) handleSaveItem(w http.ResponseWriter, r *http.Request) {
@@ -49,17 +49,47 @@ func (s *Server) handleSaveItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	saved, err := s.app.SaveItem(item)
+	if item.ModuleID == "" {
+		writeError(w, http.StatusBadRequest, "module_id is required")
+		return
+	}
+	if item.Title == "" {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if item.Images == nil {
+		item.Images = []string{}
+	}
+	if item.Tags == nil {
+		item.Tags = []string{}
+	}
+	if item.Attributes == nil {
+		item.Attributes = map[string]any{}
+	}
+
+	store := s.requestStore(r)
+	si := toStorageItem(item)
+	var result storage.Item
+	var err error
+	if item.ID == "" {
+		result, err = store.InsertItem(si)
+	} else {
+		result, err = store.UpdateItem(si)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, saved)
+	writeJSON(w, http.StatusOK, fromStorageItem(result))
 }
 
 func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.app.DeleteItem(id); err != nil {
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "item ID is required")
+		return
+	}
+	if err := s.requestStore(r).DeleteItem(id); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -74,12 +104,16 @@ func (s *Server) handleDeleteItems(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	result, err := s.app.DeleteItems(body.IDs)
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "no item IDs provided")
+		return
+	}
+	deleted, err := s.requestStore(r).DeleteItems(body.IDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, BulkDeleteResult{Deleted: deleted})
 }
 
 func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) {
@@ -91,12 +125,20 @@ func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	result, err := s.app.BulkUpdateModule(body.IDs, body.NewModuleID)
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, "no item IDs provided")
+		return
+	}
+	if body.NewModuleID == "" {
+		writeError(w, http.StatusBadRequest, "new module ID is required")
+		return
+	}
+	updated, err := s.requestStore(r).BulkUpdateModule(body.IDs, body.NewModuleID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(w, http.StatusOK, BulkUpdateResult{Updated: updated})
 }
 
 // Tags
@@ -148,12 +190,12 @@ func (s *Server) handleDeleteTag(w http.ResponseWriter, r *http.Request) {
 // Modules
 
 func (s *Server) handleGetModules(w http.ResponseWriter, r *http.Request) {
-	modules, err := s.app.GetActiveModules()
+	modules, err := s.requestStore(r).GetModules()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, modules)
+	writeJSON(w, http.StatusOK, toMainModules(modules))
 }
 
 func (s *Server) handleSaveModule(w http.ResponseWriter, r *http.Request) {
@@ -162,17 +204,30 @@ func (s *Server) handleSaveModule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "reading body: "+err.Error())
 		return
 	}
-	mod, err := s.app.SaveCustomModule(string(body))
-	if err != nil {
+	var schema storage.ModuleSchema
+	if err := json.Unmarshal(body, &schema); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if err := storage.ValidateModuleSchema(&schema); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, mod)
+	store := s.requestStore(r)
+	if err := store.SaveModule(schema); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, fromStorageModule(schema))
 }
 
 func (s *Server) handleLoadModuleFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	content, err := s.app.LoadModuleFile(id)
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "module ID is required")
+		return
+	}
+	content, err := s.requestStore(r).LoadModuleFile(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -256,7 +311,13 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	csv, err := s.requestStore(r).ExportItemsCSV(body.IDs, toStorageModules(s.app.modules))
+	store := s.requestStore(r)
+	modules, err := store.GetModules()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "loading modules: "+err.Error())
+		return
+	}
+	csv, err := store.ExportItemsCSV(body.IDs, modules)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -272,7 +333,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 // Settings
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	content, err := s.app.LoadSettings()
+	content, err := s.requestStore(r).GetSettings()
 	if err != nil {
 		// Return empty object if no settings
 		w.Header().Set("Content-Type", "application/json")
@@ -291,7 +352,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "reading body: "+err.Error())
 		return
 	}
-	if err := s.app.SaveSettings(string(body)); err != nil {
+	if err := s.requestStore(r).SaveSettings(string(body)); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -444,7 +505,7 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Look up module schema
-	modules, err := s.app.GetActiveModules()
+	modules, err := s.requestStore(r).GetModules()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "loading modules: "+err.Error())
 		return
@@ -452,8 +513,7 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 	var schema *storage.ModuleSchema
 	for _, m := range modules {
 		if m.ID == body.ModuleID {
-			sm := toStorageModule(m)
-			schema = &sm
+			schema = &m
 			break
 		}
 	}
