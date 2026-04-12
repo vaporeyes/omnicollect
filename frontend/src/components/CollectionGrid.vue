@@ -181,8 +181,6 @@ function onImageError(event: Event) {
   right: 0;
   padding: 8px 10px;
   background: hsla(0, 0%, 10%, 0.45);
-  -webkit-backdrop-filter: blur(10px) saturate(1.4);
-  backdrop-filter: blur(10px) saturate(1.4);
   display: flex;
   flex-direction: column;
   gap: 2px;

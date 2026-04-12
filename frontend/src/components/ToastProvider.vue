@@ -47,8 +47,6 @@ const toastStore = useToastStore()
   cursor: pointer;
   pointer-events: auto;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 .toast-icon {
   flex-shrink: 0;

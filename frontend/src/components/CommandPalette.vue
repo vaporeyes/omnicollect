@@ -227,8 +227,6 @@ function onBackdropClick() {
   justify-content: center;
   padding-top: 15vh;
   background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(var(--glass-blur, 16px));
-  -webkit-backdrop-filter: blur(var(--glass-blur, 16px));
 }
 
 .palette-dialog {

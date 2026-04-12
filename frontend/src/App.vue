@@ -2,7 +2,7 @@
 import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
 import * as api from './api/client'
 import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult, TagCount} from './api/types'
-import {applyPolineTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
+import {applyTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
 import {useCollectionStore} from './stores/collectionStore'
 import {useToastStore} from './stores/toastStore'
@@ -91,7 +91,7 @@ function getEffectiveDark(): boolean {
 }
 
 function refreshTheme() {
-  applyPolineTheme(getEffectiveDark(), themeConfig.value)
+  applyTheme(getEffectiveDark())
 }
 
 refreshTheme()

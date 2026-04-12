@@ -84,8 +84,6 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
   border: 1px solid var(--border-primary, #333);
   border-radius: var(--radius-md, 8px);
   box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,0.25));
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
 }
 .ctx-item {
   display: block;

@@ -29,8 +29,6 @@ defineEmits<{
 <style scoped>
 .metric-card {
   background: var(--bg-secondary);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   padding: var(--space-lg) var(--space-lg);

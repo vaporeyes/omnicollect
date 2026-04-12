@@ -238,8 +238,6 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
 
 .chart-card {
   background: var(--bg-secondary);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   padding: var(--space-lg);

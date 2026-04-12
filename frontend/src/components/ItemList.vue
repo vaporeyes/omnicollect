@@ -287,8 +287,6 @@ function sortIndicator(key: string): string {
   color: var(--text-muted);
   white-space: nowrap;
   background: var(--bg-secondary);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
   position: sticky;
   top: 0;
   z-index: 1;

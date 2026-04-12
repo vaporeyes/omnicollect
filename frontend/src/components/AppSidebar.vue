@@ -186,8 +186,6 @@ defineExpose({startRename})
   width: 250px;
   padding: 0;
   background: var(--bg-tertiary);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
