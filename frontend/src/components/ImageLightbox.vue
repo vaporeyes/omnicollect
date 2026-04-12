@@ -79,7 +79,11 @@ function onClose() {
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--overlay-bg);
+  background-color: rgba(0, 0, 0, 0.92);
+  background-image: radial-gradient(
+    circle, rgba(255, 255, 255, 0.04) 1px, transparent 1px
+  );
+  background-size: 6px 6px;
   display: flex;
   align-items: center;
   justify-content: center;

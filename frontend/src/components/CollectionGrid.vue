@@ -63,8 +63,8 @@ function onImageError(event: Event) {
       <div
         v-for="(item, index) in items"
         :key="item.id"
-        :class="['grid-card', 'animate-scale-up', {'card-selected': selectionStore.isSelected(item.id)}]"
-        :style="{ animationDelay: `${index * 0.05}s` }"
+        :class="['grid-card', {'card-selected': selectionStore.isSelected(item.id)}]"
+        :style="{ '--card-index': index }"
         @click="emit('select', item)"
         @contextmenu.prevent="emit('itemContextMenu', item, $event.clientX, $event.clientY)"
       >
@@ -115,16 +115,23 @@ function onImageError(event: Event) {
 .grid-card {
   break-inside: avoid;
   margin-bottom: 16px;
-  border: none;
+  border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   overflow: hidden;
   cursor: pointer;
-  transition: transform var(--transition-normal), box-shadow var(--transition-normal);
+  transition: transform 0.15s cubic-bezier(0, 0.55, 0.45, 1), box-shadow 0.15s;
   box-shadow: var(--shadow-sm);
+  /* Drawer pull entrance */
+  clip-path: polygon(0 0, 100% 0, 100% 0, 0 0);
+  animation: unroll 0.6s cubic-bezier(0.77, 0, 0.17, 1) forwards;
+  animation-delay: calc(var(--card-index, 0) * 40ms);
+}
+@keyframes unroll {
+  to { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
 }
 .grid-card:hover {
-  transform: scale(1.02);
-  box-shadow: var(--shadow-md);
+  transform: translate(-4px, -4px);
+  box-shadow: 4px 4px 0px var(--accent-blue);
 }
 .card-selected {
   outline: 2px solid var(--accent-blue);
@@ -160,6 +167,23 @@ function onImageError(event: Event) {
   position: relative;
   background: var(--bg-secondary);
   overflow: hidden;
+}
+/* Scanner sweep reveal on image load */
+.card-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent-blue);
+  transform: translateX(-100%);
+  animation: scanner-sweep 0.5s cubic-bezier(0.77, 0, 0.17, 1) forwards;
+  animation-delay: calc(var(--card-index, 0) * 40ms + 0.3s);
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes scanner-sweep {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0); }
+  100% { transform: translateX(100%); }
 }
 .card-image img {
   width: 100%;

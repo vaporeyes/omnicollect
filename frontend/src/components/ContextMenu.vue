@@ -109,19 +109,18 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
   background: var(--error-bg, rgba(239, 68, 68, 0.12));
 }
 
-/* Entrance/exit animation */
+/* Mechanical snap entrance */
 .ctx-enter-active {
-  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+  transition: opacity 0.1s, transform 0.1s cubic-bezier(0, 0.55, 0.45, 1);
 }
 .ctx-leave-active {
-  transition: opacity 0.08s ease-in, transform 0.08s ease-in;
+  transition: opacity 0.08s;
 }
 .ctx-enter-from {
   opacity: 0;
-  transform: scale(0.95);
+  transform: translateY(-8px);
 }
 .ctx-leave-to {
   opacity: 0;
-  transform: scale(0.95);
 }
 </style>

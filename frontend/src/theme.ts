@@ -34,6 +34,8 @@ const LIGHT_TOKENS: Record<string, string> = {
   '--overlay-bg': 'rgba(18, 18, 18, 0.88)',
   '--shadow-sm': '2px 2px 0px #121212',
   '--shadow-md': '4px 4px 0px #121212',
+  '--grid-color': 'hsla(0, 0%, 20%, 0.04)',
+  '--vignette-color': 'hsla(0, 0%, 0%, 0.08)',
 }
 
 const DARK_TOKENS: Record<string, string> = {
@@ -61,6 +63,8 @@ const DARK_TOKENS: Record<string, string> = {
   '--overlay-bg': 'rgba(0, 0, 0, 0.92)',
   '--shadow-sm': '2px 2px 0px #2A2D35',
   '--shadow-md': '4px 4px 0px #2A2D35',
+  '--grid-color': 'hsla(0, 0%, 80%, 0.03)',
+  '--vignette-color': 'hsla(0, 0%, 0%, 0.25)',
 }
 
 // Apply the theme tokens for the given mode.

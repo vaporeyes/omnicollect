@@ -45,6 +45,13 @@
   --shadow-md: 4px 4px 0px var(--border-primary);
   --shadow-lg: 6px 6px 0px var(--border-primary);
 
+  /* Blueprint grid */
+  --grid-size: 32px;
+  --grid-color: hsla(0, 0%, 20%, 0.04);
+
+  /* Vignette */
+  --vignette-color: hsla(0, 0%, 0%, 0.08);
+
   /* Hard corners */
   --radius-sm: 2px;
   --radius-md: 4px;
@@ -87,6 +94,20 @@ body {
   line-height: var(--leading-normal);
   font-size: 15px;
   letter-spacing: var(--tracking-tight);
+}
+
+/* Vignette: darkened edges like a photographer's darkroom */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    transparent 55%,
+    var(--vignette-color) 100%
+  );
 }
 
 h1, h2, h3, h4, h5, h6 {

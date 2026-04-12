@@ -850,9 +850,12 @@ body {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: var(--bg-primary);
+  background-color: var(--bg-primary);
+  background-image:
+    linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+  background-size: var(--grid-size) var(--grid-size);
   border-top-left-radius: var(--radius-lg);
-  box-shadow: -2px 0 16px hsla(220, 10%, 20%, 0.06);
   position: relative;
   z-index: 1;
 }
