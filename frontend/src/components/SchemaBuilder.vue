@@ -218,7 +218,7 @@ function cancelDiscard() {
 }
 .confirm-title {
   margin: 0 0 4px;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 400;
   color: var(--text-primary);
@@ -241,7 +241,7 @@ function cancelDiscard() {
   color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 .confirm-cancel-btn:hover {
   background: var(--bg-hover);
@@ -255,7 +255,7 @@ function cancelDiscard() {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 .confirm-delete-btn:hover {
   background: #b91c1c;

@@ -244,7 +244,7 @@ function nextImage() {
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-weight: 500;
   padding: 6px 2px;
   transition: color var(--transition-fast);
@@ -262,7 +262,7 @@ function nextImage() {
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
@@ -371,7 +371,7 @@ function nextImage() {
   color: rgba(255, 255, 255, 0.8);
   font-size: 11px;
   font-weight: 500;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   padding: 3px 10px;
   border-radius: 12px;
   font-variant-numeric: tabular-nums;
@@ -423,7 +423,7 @@ function nextImage() {
 .no-images p {
   margin: 0;
   font-size: 13px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 
 /* --- Right column: scrolling metadata --- */
@@ -433,7 +433,7 @@ function nextImage() {
 }
 .collection-badge {
   display: inline-block;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -442,7 +442,7 @@ function nextImage() {
   margin-bottom: var(--space-sm);
 }
 .item-title {
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: clamp(28px, 4vw, 42px);
   font-weight: 400;
   line-height: var(--leading-tight);
@@ -451,9 +451,9 @@ function nextImage() {
   margin: 0 0 var(--space-md);
 }
 .price-display {
-  font-family: 'Outfit', sans-serif;
-  font-size: 22px;
-  font-weight: 300;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 400;
   color: var(--text-secondary);
   letter-spacing: var(--tracking-tight);
   font-variant-numeric: tabular-nums;
@@ -472,7 +472,7 @@ function nextImage() {
   margin-bottom: var(--space-lg);
 }
 .section-heading {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -496,14 +496,14 @@ function nextImage() {
   border-bottom: none;
 }
 .info-row dt {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 400;
   color: var(--text-secondary);
 }
 .info-row dd {
   margin: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
@@ -515,7 +515,7 @@ function nextImage() {
   margin-bottom: var(--space-sm);
 }
 .facet-label-sm {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -545,7 +545,7 @@ function nextImage() {
 }
 .confirm-title {
   margin: 0 0 4px;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 400;
   color: var(--text-primary);
@@ -568,7 +568,7 @@ function nextImage() {
   color: var(--text-primary);
   cursor: pointer;
   font-size: 13px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 .confirm-cancel-btn:hover {
   background: var(--bg-hover);
@@ -582,7 +582,7 @@ function nextImage() {
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 .confirm-delete-btn:hover {
   background: #b91c1c;
@@ -603,6 +603,6 @@ function nextImage() {
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
 }
 </style>

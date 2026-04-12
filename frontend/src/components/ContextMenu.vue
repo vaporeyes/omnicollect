@@ -96,7 +96,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
   background: transparent;
   color: var(--text-primary);
   font-size: 13px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   text-align: left;
   cursor: pointer;
   transition: background 0.1s;

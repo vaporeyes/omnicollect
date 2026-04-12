@@ -50,7 +50,7 @@ const emit = defineEmits<{
   box-shadow: var(--shadow-lg, 0 16px 48px rgba(0,0,0,0.3));
 }
 .bar-count {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
@@ -66,7 +66,7 @@ const emit = defineEmits<{
   border-radius: var(--radius-sm, 6px);
   background: var(--accent-blue);
   color: var(--text-on-accent);
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

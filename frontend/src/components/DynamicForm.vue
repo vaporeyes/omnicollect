@@ -298,7 +298,7 @@ function onSubmit() {
 }
 .dynamic-form h3 {
   margin: 0 0 24px 0;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 28px;
   letter-spacing: var(--tracking-tight);
 }

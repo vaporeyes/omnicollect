@@ -834,7 +834,7 @@ function onSettingsClose() {
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  font-family: var(--font-body);
   color: var(--text-primary);
   background: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
@@ -919,7 +919,7 @@ body {
 }
 .confirm-title {
   margin: 0 0 4px;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 400;
   color: var(--text-primary);

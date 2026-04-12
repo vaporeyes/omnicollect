@@ -317,7 +317,7 @@ watch(() => props.schema?.id, () => {
   border-radius: var(--radius-sm);
   padding: 6px 10px;
   color: var(--text-primary);
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -414,7 +414,7 @@ watch(() => props.schema?.id, () => {
 }
 
 .facet-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;

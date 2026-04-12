@@ -127,7 +127,7 @@ function executeDelete() {
 }
 .tag-manager-header h3 {
   margin: 0;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 22px;
   font-weight: 400;
   color: var(--text-primary);
@@ -167,7 +167,7 @@ function executeDelete() {
 }
 .tag-name {
   flex: 1;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
@@ -177,7 +177,7 @@ function executeDelete() {
   text-decoration: underline;
 }
 .tag-item-count {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   color: var(--text-muted);
   margin-right: 8px;
@@ -199,7 +199,7 @@ function executeDelete() {
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   transition: background 0.1s;
@@ -249,7 +249,7 @@ function executeDelete() {
 }
 .confirm-title {
   margin: 0 0 4px;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 400;
   color: var(--text-primary);

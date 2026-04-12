@@ -247,7 +247,7 @@ function imageErrorHandler(event: Event) {
 }
 .comparison-title {
   margin: 0;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 22px;
   font-weight: 400;
   color: var(--text-primary);
@@ -351,7 +351,7 @@ function imageErrorHandler(event: Event) {
   margin-top: 8px;
 }
 .diff-heading {
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 18px;
   font-weight: 400;
   color: var(--text-primary);

@@ -119,7 +119,7 @@ function onBlur() {
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-mono);
 }
 .tag-remove {
   background: none;

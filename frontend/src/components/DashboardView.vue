@@ -60,13 +60,15 @@ watch(() => props.dark, () => {
   requestAnimationFrame(readThemeColors)
 })
 
-// Doughnut chart data
+// Doughnut chart data: show value breakdown when prices exist, item count otherwise
+const useCountFallback = computed(() => metrics.value.totalValue === 0)
+
 const doughnutData = computed(() => {
   const breakdown = metrics.value.moduleBreakdown
   return {
     labels: breakdown.map(s => s.moduleName),
     datasets: [{
-      data: breakdown.map(s => s.totalValue),
+      data: breakdown.map(s => useCountFallback.value ? s.itemCount : s.totalValue),
       backgroundColor: breakdown.map((_, i) => chartColors.value[i % chartColors.value.length] || '#888'),
       borderWidth: 0,
       hoverOffset: 6,
@@ -99,6 +101,9 @@ const doughnutOptions = computed(() => ({
         label(ctx: any) {
           const segment = metrics.value.moduleBreakdown[ctx.dataIndex]
           if (!segment) return ''
+          if (useCountFallback.value) {
+            return `${segment.moduleName}: ${segment.itemCount} items`
+          }
           const pct = segment.percentage.toFixed(1)
           return `${segment.moduleName}: $${segment.totalValue.toLocaleString()} (${segment.itemCount} items, ${pct}%)`
         },
@@ -153,7 +158,7 @@ const barOptions = computed(() => ({
 }))
 
 const hasItems = computed(() => props.items.length > 0)
-const hasBreakdown = computed(() => metrics.value.moduleBreakdown.length > 0 && metrics.value.totalValue > 0)
+const hasBreakdown = computed(() => metrics.value.moduleBreakdown.length > 0)
 const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
 </script>
 
@@ -187,12 +192,12 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
 
     <div v-if="hasItems" class="dashboard-charts">
       <div class="chart-card">
-        <h3 class="chart-title">Collection Breakdown</h3>
+        <h3 class="chart-title">{{ useCountFallback ? 'Items by Type' : 'Value by Type' }}</h3>
         <div v-if="hasBreakdown" class="chart-container doughnut-container">
           <Doughnut :data="doughnutData" :options="doughnutOptions" />
         </div>
         <div v-else class="chart-empty">
-          Add prices to see your collection breakdown
+          Add items to see your collection breakdown
         </div>
       </div>
 

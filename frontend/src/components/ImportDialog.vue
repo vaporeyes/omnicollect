@@ -212,7 +212,7 @@ function onClose() {
 }
 .import-title {
   margin: 0 0 20px;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--font-heading);
   font-size: 22px;
   font-weight: 400;
   color: var(--text-primary);
@@ -237,7 +237,7 @@ function onClose() {
 }
 .drop-label {
   margin: 0 0 4px;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   color: var(--text-primary);
 }

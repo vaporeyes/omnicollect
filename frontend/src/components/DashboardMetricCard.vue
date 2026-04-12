@@ -59,9 +59,9 @@ defineEmits<{
 }
 
 .metric-value {
-  font-family: 'Instrument Serif', serif;
-  font-size: 28px;
-  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 500;
   color: var(--text-primary);
   line-height: var(--leading-dense);
 }

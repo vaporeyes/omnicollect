@@ -46,7 +46,7 @@ function toggleTag(name: string) {
   margin-bottom: 12px;
 }
 .tag-filter-label {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
@@ -66,7 +66,7 @@ function toggleTag(name: string) {
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-mono);
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 .tag-filter-chip:hover {

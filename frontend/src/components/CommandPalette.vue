@@ -261,7 +261,7 @@ function onBackdropClick() {
   flex: 1;
   border: none;
   background: transparent;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 18px;
   color: var(--text-primary);
   outline: none;
@@ -274,7 +274,7 @@ function onBackdropClick() {
 
 .palette-hint {
   flex-shrink: 0;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   font-weight: 500;
   color: var(--text-muted);
@@ -357,13 +357,13 @@ function onBackdropClick() {
 }
 
 .result-title {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 15px;
   font-weight: 500;
 }
 
 .result-subtitle {
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 2px;
@@ -383,7 +383,7 @@ function onBackdropClick() {
 .no-results {
   padding: 24px;
   text-align: center;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   color: var(--text-muted);
 }

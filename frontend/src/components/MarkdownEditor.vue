@@ -125,7 +125,7 @@ function link() { insertSyntax('[', '](url)', 'link text') }
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-family: 'Outfit', sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   transition: background 0.1s, color 0.1s;
 }
