@@ -77,7 +77,7 @@ frontend/src/
                  #   BulkActionBar, TagInput, TagFilter,
                  #   TagManager, ImportDialog,
                  #   DashboardView, DashboardMetricCard,
-                 #   SmartFolders
+                 #   SmartFolders, ComparisonView
   composables/   # useDashboardMetrics (computed insights from items)
 ```
 
@@ -170,8 +170,18 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
   View mode (dashboard/list/grid) not included in saved state.
 - Multi-select via `selectionStore` (Pinia): Set<string> of selected IDs,
   Shift-click range, select-all. `BulkActionBar.vue` floating bar with
-  bulk delete, CSV export, module reassignment. Bindings: `DeleteItems`,
-  `ExportItemsCSV`, `BulkUpdateModule`
+  bulk delete, CSV export, module reassignment, and Compare (when exactly
+  2 items selected). Bindings: `DeleteItems`, `ExportItemsCSV`,
+  `BulkUpdateModule`
+- Masonry grid: `CollectionGrid.vue` uses CSS `column-count` layout for
+  variable-height cards based on image aspect ratio. No forced cropping.
+  Frosted glass captions and hover effects preserved.
+- Item comparison mode: `ComparisonView.vue` displays two selected items
+  side-by-side with synchronized image galleries (shared activeImageIndex
+  with per-side clamping) and a diff table showing core fields (title,
+  price, tags) plus union of schema attributes. Differing values
+  highlighted with amber background. Responsive: stacks vertically
+  below 768px. No backend changes; client-side only.
 
 ## REST API Endpoints
 
@@ -268,6 +278,8 @@ docker-compose up               # Run full cloud stack (app + postgres + minio)
 - N/A (no backend changes; all computation is client-side from existing store data) (018-insights-dashboard)
 - TypeScript 4.6+ (frontend), Go 1.25+ (backend -- settings storage only, no new endpoints) + Vue 3.2+, Pinia 3.0+ (new store: smartFolderStore) (019-smart-folders)
 - Existing settings JSON blob (SQLite for local, PostgreSQL for cloud) -- Smart Folders stored as `smartFolders` key (019-smart-folders)
+- Go 1.25+ (backend, no changes), TypeScript + Vue 3 (frontend) + Vue 3 Composition API, Pinia stores, existing CSS variable system (020-masonry-compare)
+- N/A (no backend or database changes) (020-masonry-compare)
 
 ## Recent Changes
 - 017-public-showcase: Added public showcase URLs with server-rendered HTML galleries (zero JS), CSS :target detail overlay, stable slug generation, toggle public/private from ModuleSelector, showcases table in SQLite/PostgreSQL, 24-item pagination, cloud-mode-only feature

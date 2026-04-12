@@ -10,6 +10,7 @@ const emit = defineEmits<{
   export: []
   editModule: []
   deselectAll: []
+  compare: []
 }>()
 </script>
 
@@ -20,6 +21,7 @@ const emit = defineEmits<{
         <span class="bar-count">{{ count }} item{{ count === 1 ? '' : 's' }} selected</span>
         <div class="bar-actions">
           <button class="bar-btn bar-btn-danger" @click="emit('delete')">Delete Selected</button>
+          <button v-if="count === 2" class="bar-btn" @click="emit('compare')">Compare</button>
           <button class="bar-btn" @click="emit('export')">Export CSV</button>
           <button class="bar-btn" @click="emit('editModule')">Edit Module</button>
           <button class="bar-btn bar-btn-muted" @click="emit('deselectAll')">Deselect All</button>

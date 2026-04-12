@@ -109,11 +109,12 @@ function onImageError(event: Event) {
 
 <style scoped>
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  column-width: 240px;
+  column-gap: 16px;
 }
 .grid-card {
+  break-inside: avoid;
+  margin-bottom: 16px;
   border: none;
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -157,19 +158,17 @@ function onImageError(event: Event) {
 }
 .card-image {
   position: relative;
-  aspect-ratio: 1;
   background: var(--bg-secondary);
   overflow: hidden;
 }
 .card-image img {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   display: block;
 }
 .placeholder {
   width: 100%;
-  height: 100%;
+  aspect-ratio: 1;
   display: flex;
   align-items: center;
   justify-content: center;

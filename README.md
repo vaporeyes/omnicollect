@@ -260,7 +260,8 @@ omnicollect/
         FormField.vue        # Type-dispatched field input
         ModuleSelector.vue   # Collection type picker
         ItemList.vue         # List view with search + context menu
-        CollectionGrid.vue   # Grid view with lazy thumbnails + context menu
+        CollectionGrid.vue   # Masonry grid view with lazy thumbnails + context menu
+        ComparisonView.vue   # Side-by-side item comparison with synced galleries
         ItemDetail.vue       # Premium split-layout item detail view
         ImageAttach.vue      # Image file picker + attachment
         ImageLightbox.vue    # Full-resolution image overlay

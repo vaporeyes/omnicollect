@@ -26,6 +26,7 @@ import TagFilter from './components/TagFilter.vue'
 import TagManager from './components/TagManager.vue'
 import ImportDialog from './components/ImportDialog.vue'
 import DashboardView from './components/DashboardView.vue'
+import ComparisonView from './components/ComparisonView.vue'
 import {isAuthConfigured} from './auth/plugin'
 import {AuthGuard} from './auth/guard'
 import {useAuth0} from '@auth0/auth0-vue'
@@ -114,6 +115,8 @@ const showForm = ref(false)
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
 const showDashboard = ref(true)
+const showComparison = ref(false)
+const comparisonItems = ref<[Item, Item] | null>(null)
 
 const activeFilterSchema = computed(() => {
   const id = collectionStore.activeModuleId
@@ -221,6 +224,7 @@ function onGlobalKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (showImportDialog.value) { showImportDialog.value = false; return }
     if (showPalette.value) { showPalette.value = false; return }
+    if (showComparison.value) { onCloseComparison(); return }
     if (lightboxVisible.value) { lightboxVisible.value = false; return }
     if (ctxVisible.value) { ctxVisible.value = false; return }
     if (showForm.value) { onCancel(); return }
@@ -285,6 +289,8 @@ function onNavigate(moduleId: string) {
   showBuilder.value = false
   showSettings.value = false
   showTagManager.value = false
+  showComparison.value = false
+  comparisonItems.value = null
   if (!moduleId) showDashboard.value = true
 }
 
@@ -486,6 +492,21 @@ async function onBulkUpdateModule() {
   bulkTargetModuleId.value = ''
 }
 
+function onCompare() {
+  const ids = selectionStore.selectedIdArray()
+  if (ids.length !== 2) return
+  const a = collectionStore.items.find(i => i.id === ids[0])
+  const b = collectionStore.items.find(i => i.id === ids[1])
+  if (!a || !b) return
+  comparisonItems.value = [a, b]
+  showComparison.value = true
+}
+
+function onCloseComparison() {
+  showComparison.value = false
+  comparisonItems.value = null
+}
+
 async function onImported() {
   showImportDialog.value = false
   await Promise.all([
@@ -643,8 +664,20 @@ function onSettingsClose() {
         />
       </Transition>
 
+      <Transition name="fade-slide" mode="out-in">
+        <ComparisonView
+          v-if="showComparison && comparisonItems && !showSettings && !showTagManager"
+          :itemA="comparisonItems[0]"
+          :itemB="comparisonItems[1]"
+          :schemaA="moduleStore.getModuleById(comparisonItems[0].moduleId) ?? null"
+          :schemaB="moduleStore.getModuleById(comparisonItems[1].moduleId) ?? null"
+          @close="onCloseComparison"
+          @viewImage="onDetailViewImage"
+        />
+      </Transition>
+
       <!-- Collection views -->
-      <template v-if="!showForm && !showDetail && !showBuilder && !showSettings && !showTagManager">
+      <template v-if="!showForm && !showDetail && !showBuilder && !showSettings && !showTagManager && !showComparison">
         <div class="view-controls">
           <button
             v-if="!collectionStore.activeModuleId"
@@ -732,6 +765,7 @@ function onSettingsClose() {
       @export="onBulkExportCSV"
       @editModule="showBulkModuleDialog = true; bulkTargetModuleId = ''"
       @deselectAll="selectionStore.clear()"
+      @compare="onCompare"
     />
 
     <!-- Bulk delete confirmation -->
