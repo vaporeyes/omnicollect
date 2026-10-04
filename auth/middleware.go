@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"omnicollect/tenantid"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,7 @@ import (
 )
 
 // TenantProvisioner is called when a tenant ID is seen for the first time.
-type TenantProvisioner func(tenantID string) error
+type TenantProvisioner func(ctx context.Context, tenantID string) error
 
 // NewJWTMiddleware creates an HTTP middleware that validates Auth0 JWT tokens.
 // It extracts the sub claim, sanitizes it to a tenant ID, checks provisioning,
@@ -63,7 +64,7 @@ func NewJWTMiddleware(issuerURL, audience string, provisioner TenantProvisioner)
 				return
 			}
 
-			tenantID := SanitizeTenantID(sub)
+			tenantID := tenantid.Subject(issuerURL, sub)
 
 			// Check provisioning cache; provision on first encounter
 			if provisioner != nil {
@@ -72,7 +73,7 @@ func NewJWTMiddleware(issuerURL, audience string, provisioner TenantProvisioner)
 				mu.RUnlock()
 
 				if !known {
-					if err := provisioner(tenantID); err != nil {
+					if err := provisioner(r.Context(), tenantID); err != nil {
 						log.Printf("auth: failed to provision tenant %s: %v", tenantID, err)
 						writeAuthError(w, http.StatusServiceUnavailable, "tenant provisioning failed")
 						return
@@ -133,14 +134,14 @@ func ProvisionCheck(provisioner TenantProvisioner) TenantProvisioner {
 	}
 	var mu sync.RWMutex
 	cache := make(map[string]bool)
-	return func(tenantID string) error {
+	return func(ctx context.Context, tenantID string) error {
 		mu.RLock()
 		known := cache[tenantID]
 		mu.RUnlock()
 		if known {
 			return nil
 		}
-		if err := provisioner(tenantID); err != nil {
+		if err := provisioner(ctx, tenantID); err != nil {
 			return err
 		}
 		mu.Lock()

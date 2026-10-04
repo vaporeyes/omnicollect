@@ -11,17 +11,19 @@ import (
 // into every request's context. Used in local/development mode when auth is
 // disabled. Optionally runs provisioning on the fixed tenant at startup.
 func NewLocalTenantMiddleware(tenantID string, provisioner TenantProvisioner) func(http.Handler) http.Handler {
-	// Sanitize to a valid PostgreSQL schema name (e.g., "default" -> "tenant_default")
+	// Use the same collision-resistant mapping as the local-mode store.
 	sanitized := SanitizeTenantID(tenantID)
 
-	if provisioner != nil {
-		if err := provisioner(sanitized); err != nil {
-			log.Printf("auth: warning: failed to provision local tenant %s: %v", sanitized, err)
-		}
-	}
-
+	check := ProvisionCheck(provisioner)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if check != nil {
+				if err := check(r.Context(), sanitized); err != nil {
+					log.Printf("auth: local tenant provisioning failed: %v", err)
+					writeAuthError(w, http.StatusServiceUnavailable, "tenant provisioning failed")
+					return
+				}
+			}
 			ctx := SetTenantID(r.Context(), sanitized)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

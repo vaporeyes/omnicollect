@@ -4,7 +4,7 @@ package auth
 
 import (
 	"context"
-	"strings"
+	"omnicollect/tenantid"
 )
 
 type contextKey string
@@ -25,21 +25,8 @@ func TenantIDFromContext(ctx context.Context) string {
 	return ""
 }
 
-// SanitizeTenantID converts a JWT sub claim into a valid PostgreSQL schema name.
-// Replaces non-alphanumeric characters with underscores and adds a "tenant_" prefix.
-// Example: "auth0|64abc123" -> "tenant_auth0_64abc123"
-func SanitizeTenantID(sub string) string {
-	var sb strings.Builder
-	for _, c := range sub {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-			sb.WriteRune(c)
-		} else {
-			sb.WriteRune('_')
-		}
-	}
-	result := sb.String()
-	if result == "" {
-		result = "default"
-	}
-	return "tenant_" + result
+// SanitizeTenantID returns a collision-resistant schema for an opaque local ID.
+// JWT middleware uses issuer-bound identities through tenantid.Subject instead.
+func SanitizeTenantID(id string) string {
+	return tenantid.Local(id)
 }

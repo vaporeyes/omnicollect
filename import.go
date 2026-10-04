@@ -1,24 +1,24 @@
-// ABOUTME: ZIP backup import logic for local (SQLite) and cloud (JSON) formats.
-// ABOUTME: Supports Replace (atomic) and Merge (per-item upsert) import modes.
+// ABOUTME: Strict, bounded portable and legacy ZIP backup loading and media staging.
+// ABOUTME: Stages immutable validated images before the atomic metadata restore commit.
 package main
 
 import (
 	"archive/zip"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"net/url"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
-
-	"omnicollect/storage"
+	"time"
 
 	_ "modernc.org/sqlite"
+	"omnicollect/storage"
 )
 
-// ImportSummary describes the contents of a backup ZIP before import.
 type ImportSummary struct {
 	Format      string   `json:"format"`
 	ItemCount   int      `json:"itemCount"`
@@ -27,442 +27,411 @@ type ImportSummary struct {
 	Warnings    []string `json:"warnings"`
 	TempID      string   `json:"tempId"`
 }
-
-// ImportResult reports the outcome of an import operation.
 type ImportResult struct {
 	ItemsImported   int      `json:"itemsImported"`
 	ImagesRestored  int      `json:"imagesRestored"`
 	ModulesImported int      `json:"modulesImported"`
 	Warnings        []string `json:"warnings"`
 }
-
-// ImportRequest is the JSON body for the execute import endpoint.
 type ImportRequest struct {
 	TempID string `json:"tempId"`
 	Mode   string `json:"mode"`
 }
 
-// detectBackupFormat scans ZIP entries to determine if this is a local
-// (SQLite-based) or cloud (JSON-based) backup. Returns "local", "cloud",
-// or an error if the format is unrecognized.
-func detectBackupFormat(zr *zip.Reader) (string, error) {
-	for _, f := range zr.File {
-		if f.Name == "collection.db" {
-			return "local", nil
-		}
-		if f.Name == "items.json" {
-			return "cloud", nil
-		}
+// Bound simultaneous archive expansion/parsing independently from image decode.
+var archiveWorkers = make(chan struct{}, 1)
+
+func acquireArchiveWorker(ctx context.Context) (func(), error) {
+	select {
+	case archiveWorkers <- struct{}{}:
+		return func() { <-archiveWorkers }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	return "", fmt.Errorf("unrecognized backup format: ZIP contains neither collection.db nor items.json")
 }
 
-// analyzeBackupZip opens a ZIP file and returns a summary of its contents
-// without modifying any data. The tempID is the path to the temp file so
-// the execute step can re-open it.
-func analyzeBackupZip(zipPath string) (ImportSummary, error) {
-	zr, err := zip.OpenReader(zipPath)
-	if err != nil {
-		return ImportSummary{}, fmt.Errorf("opening ZIP: %w", err)
-	}
-	defer zr.Close()
-
-	format, err := detectBackupFormat(&zr.Reader)
-	if err != nil {
-		return ImportSummary{}, err
-	}
-
-	summary := ImportSummary{
-		Format:   format,
-		TempID:   filepath.Base(zipPath),
-		Warnings: []string{},
-	}
-
-	if format == "local" {
-		summary.ItemCount, err = countItemsLocal(&zr.Reader)
-		if err != nil {
-			return ImportSummary{}, fmt.Errorf("counting local items: %w", err)
-		}
-	} else {
-		summary.ItemCount, err = countItemsCloud(&zr.Reader)
-		if err != nil {
-			return ImportSummary{}, fmt.Errorf("counting cloud items: %w", err)
-		}
-	}
-
-	// Count images and modules from ZIP entries
-	for _, f := range zr.File {
-		if strings.HasPrefix(f.Name, "media/originals/") && !f.FileInfo().IsDir() {
-			summary.ImageCount++
-		}
-		if format == "local" && strings.HasPrefix(f.Name, "modules/") && strings.HasSuffix(f.Name, ".json") {
-			summary.ModuleCount++
-		}
-	}
-
-	// For cloud format, count modules from modules.json
-	if format == "cloud" {
-		for _, f := range zr.File {
-			if f.Name == "modules.json" {
-				rc, err := f.Open()
-				if err != nil {
-					break
-				}
-				var modules []storage.ModuleSchema
-				if err := json.NewDecoder(rc).Decode(&modules); err == nil {
-					summary.ModuleCount = len(modules)
-				}
-				rc.Close()
-				break
-			}
-		}
-	}
-
-	return summary, nil
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
 }
 
-// countItemsLocal extracts the embedded SQLite DB to a temp file, queries
-// the item count, and cleans up the temp file.
-func countItemsLocal(zr *zip.Reader) (int, error) {
-	tmpDB, err := extractFileFromZip(zr, "collection.db")
-	if err != nil {
+func (r contextReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}
-	defer os.Remove(tmpDB)
-
-	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", tmpDB))
-	if err != nil {
-		return 0, fmt.Errorf("opening embedded database: %w", err)
-	}
-	defer db.Close()
-
-	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM items").Scan(&count); err != nil {
-		return 0, fmt.Errorf("counting items: %w", err)
-	}
-	return count, nil
+	return r.reader.Read(p)
 }
 
-// countItemsCloud parses items.json and returns the number of items.
-func countItemsCloud(zr *zip.Reader) (int, error) {
-	for _, f := range zr.File {
-		if f.Name == "items.json" {
-			rc, err := f.Open()
-			if err != nil {
+func archiveEntryLimit(name string) (int64, error) {
+	switch name {
+	case "collection.db":
+		return 128 << 20, nil
+	case "items.json", "modules.json":
+		return maxArchiveMetadataBytes, nil
+	case "settings.json":
+		return 1 << 20, nil
+	case "manifest.json":
+		return 4096, nil
+	}
+	for _, prefix := range []string{"modules/", "media/originals/", "media/thumbnails/"} {
+		if strings.HasPrefix(name, prefix) {
+			filename := strings.TrimPrefix(name, prefix)
+			if err := storage.ValidateFilename(filename); err != nil {
 				return 0, err
 			}
-			defer rc.Close()
-			var items []storage.Item
-			if err := json.NewDecoder(rc).Decode(&items); err != nil {
-				return 0, fmt.Errorf("parsing items.json: %w", err)
+			switch prefix {
+			case "modules/":
+				if !strings.HasSuffix(filename, ".json") {
+					return 0, fmt.Errorf("invalid module entry")
+				}
+				return 1 << 20, nil
+			case "media/originals/":
+				return maxImageFileSize, nil
+			default:
+				return 2 << 20, nil
 			}
-			return len(items), nil
 		}
 	}
-	return 0, fmt.Errorf("items.json not found")
+	return 0, fmt.Errorf("unexpected backup entry %q", name)
 }
 
-// readItemsFromLocalBackup extracts the SQLite database from the ZIP,
-// queries all items, and reads module JSON files from the modules/ entries.
-func readItemsFromLocalBackup(zr *zip.Reader) ([]storage.Item, []storage.ModuleSchema, error) {
-	tmpDB, err := extractFileFromZip(zr, "collection.db")
-	if err != nil {
-		return nil, nil, err
+// validateArchive checks the directory AND streams every entry through its CRC
+// verifier. Directory-declared sizes alone are not trusted for decompression.
+func validateArchive(ctx context.Context, zr *zip.Reader) error {
+	if len(zr.File) > maxArchiveEntries {
+		return fmt.Errorf("backup exceeds entry limit")
 	}
-	defer os.Remove(tmpDB)
-
-	db, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", tmpDB))
-	if err != nil {
-		return nil, nil, fmt.Errorf("opening embedded database: %w", err)
-	}
-	defer db.Close()
-
-	items, err := queryAllItemsFromDB(db)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Read module schemas from ZIP entries
-	var modules []storage.ModuleSchema
-	for _, f := range zr.File {
-		if strings.HasPrefix(f.Name, "modules/") && strings.HasSuffix(f.Name, ".json") {
-			rc, err := f.Open()
-			if err != nil {
-				log.Printf("warning: could not open module file %s: %v", f.Name, err)
-				continue
-			}
-			var mod storage.ModuleSchema
-			if err := json.NewDecoder(rc).Decode(&mod); err != nil {
-				rc.Close()
-				log.Printf("warning: could not parse module file %s: %v", f.Name, err)
-				continue
-			}
-			rc.Close()
-			modules = append(modules, mod)
+	seen := map[string]bool{}
+	var expanded, compressed uint64
+	for _, file := range zr.File {
+		name := file.Name
+		if seen[name] {
+			return fmt.Errorf("duplicate backup entry %q", name)
 		}
-	}
-
-	return items, modules, nil
-}
-
-// readItemsFromCloudBackup parses items.json and modules.json from the ZIP.
-func readItemsFromCloudBackup(zr *zip.Reader) ([]storage.Item, []storage.ModuleSchema, error) {
-	var items []storage.Item
-	var modules []storage.ModuleSchema
-
-	for _, f := range zr.File {
-		if f.Name == "items.json" {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, nil, fmt.Errorf("opening items.json: %w", err)
-			}
-			if err := json.NewDecoder(rc).Decode(&items); err != nil {
-				rc.Close()
-				return nil, nil, fmt.Errorf("parsing items.json: %w", err)
-			}
-			rc.Close()
+		seen[name] = true
+		if strings.Contains(name, "\\") || strings.HasPrefix(name, "/") || strings.TrimSuffix(name, "/") != path.Clean(name) {
+			return fmt.Errorf("unsafe backup path %q", name)
 		}
-		if f.Name == "modules.json" {
-			rc, err := f.Open()
-			if err != nil {
-				return nil, nil, fmt.Errorf("opening modules.json: %w", err)
+		if file.FileInfo().IsDir() {
+			if name != "modules/" && name != "media/" && name != "media/originals/" && name != "media/thumbnails/" {
+				return fmt.Errorf("unexpected backup directory %q", name)
 			}
-			if err := json.NewDecoder(rc).Decode(&modules); err != nil {
-				rc.Close()
-				return nil, nil, fmt.Errorf("parsing modules.json: %w", err)
+			if file.UncompressedSize64 != 0 || file.CompressedSize64 != 0 {
+				return fmt.Errorf("backup directory has content")
 			}
-			rc.Close()
-		}
-	}
-
-	if items == nil {
-		return nil, nil, fmt.Errorf("items.json not found in backup")
-	}
-	if modules == nil {
-		modules = []storage.ModuleSchema{}
-	}
-
-	return items, modules, nil
-}
-
-// restoreImages extracts image files from the ZIP and saves them via MediaStore.
-// Returns the count of successfully restored images.
-func restoreImages(zr *zip.Reader, mediaStore storage.MediaStore) (int, error) {
-	restored := 0
-	for _, f := range zr.File {
-		if f.FileInfo().IsDir() {
 			continue
 		}
-
-		var saveFunc func(string, []byte) error
-		var filename string
-
-		if strings.HasPrefix(f.Name, "media/originals/") {
-			filename = filepath.Base(f.Name)
-			saveFunc = mediaStore.SaveOriginal
-		} else if strings.HasPrefix(f.Name, "media/thumbnails/") {
-			filename = filepath.Base(f.Name)
-			saveFunc = mediaStore.SaveThumbnail
-		} else {
-			continue
+		if !file.Mode().IsRegular() {
+			return fmt.Errorf("non-regular backup entry %q", name)
 		}
-
-		rc, err := f.Open()
+		limit, err := archiveEntryLimit(name)
 		if err != nil {
-			log.Printf("warning: could not open image %s: %v", f.Name, err)
+			return err
+		}
+		if file.UncompressedSize64 > uint64(limit) || file.UncompressedSize64 > uint64(maxArchiveExpandedBytes)-expanded || file.CompressedSize64 > uint64(maxArchiveCompressedBytes)-compressed {
+			return fmt.Errorf("backup exceeds expanded, compressed, or per-entry size limit")
+		}
+		expanded += file.UncompressedSize64
+		compressed += file.CompressedSize64
+	}
+	for _, file := range zr.File {
+		if file.FileInfo().IsDir() {
 			continue
 		}
-		data, err := io.ReadAll(rc)
-		rc.Close()
+		limit, _ := archiveEntryLimit(file.Name)
+		reader, err := file.Open()
 		if err != nil {
-			log.Printf("warning: could not read image %s: %v", f.Name, err)
-			continue
+			return err
 		}
-
-		if err := saveFunc(filename, data); err != nil {
-			log.Printf("warning: could not save image %s: %v", f.Name, err)
-			continue
+		count, err := io.Copy(io.Discard, io.LimitReader(contextReader{ctx, reader}, limit+1))
+		closeErr := reader.Close()
+		if err != nil {
+			return fmt.Errorf("invalid entry %q: %w", file.Name, err)
 		}
-
-		// Only count originals toward the total
-		if strings.HasPrefix(f.Name, "media/originals/") {
-			restored++
+		if closeErr != nil {
+			return closeErr
 		}
-	}
-	return restored, nil
-}
-
-// executeReplace atomically replaces all existing data with backup data.
-// Deletes all existing items and modules, then inserts all backup items
-// and modules within a single transaction. Rolls back on any failure.
-func executeReplace(store storage.Store, items []storage.Item, modules []storage.ModuleSchema) error {
-	// Get all existing item IDs for deletion
-	existing, err := store.QueryItems("", "", "", "")
-	if err != nil {
-		return fmt.Errorf("querying existing items: %w", err)
-	}
-
-	if len(existing) > 0 {
-		ids := make([]string, len(existing))
-		for i, item := range existing {
-			ids[i] = item.ID
-		}
-		if _, err := store.DeleteItems(ids); err != nil {
-			return fmt.Errorf("deleting existing items: %w", err)
+		if count > limit || uint64(count) != file.UncompressedSize64 {
+			return fmt.Errorf("entry size mismatch for %q", file.Name)
 		}
 	}
-
-	// Insert all backup items
-	for _, item := range items {
-		if _, err := store.InsertItem(item); err != nil {
-			return fmt.Errorf("inserting item %q: %w", item.Title, err)
-		}
-	}
-
-	// Save all backup modules
-	for _, mod := range modules {
-		if err := store.SaveModule(mod); err != nil {
-			return fmt.Errorf("saving module %q: %w", mod.ID, err)
-		}
-	}
-
 	return nil
 }
 
-// executeMerge performs a per-item upsert: updates existing items and
-// inserts new ones. Existing items NOT in the backup are preserved.
-// Returns the count of items processed.
-func executeMerge(store storage.Store, items []storage.Item, modules []storage.ModuleSchema) (int, error) {
-	// Build a set of existing item IDs for fast lookup
-	existing, err := store.QueryItems("", "", "", "")
+func findEntry(zr *zip.Reader, name string) *zip.File {
+	for _, file := range zr.File {
+		if file.Name == name {
+			return file
+		}
+	}
+	return nil
+}
+func readEntry(ctx context.Context, file *zip.File) ([]byte, error) {
+	if file == nil {
+		return nil, fmt.Errorf("required backup entry is missing")
+	}
+	limit, err := archiveEntryLimit(file.Name)
 	if err != nil {
-		return 0, fmt.Errorf("querying existing items: %w", err)
+		return nil, err
 	}
-	existingIDs := make(map[string]bool, len(existing))
-	for _, item := range existing {
-		existingIDs[item.ID] = true
+	reader, err := file.Open()
+	if err != nil {
+		return nil, err
 	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(contextReader{ctx, reader}, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("entry %q exceeds size limit", file.Name)
+	}
+	return data, nil
+}
+func decodeEntry(ctx context.Context, zr *zip.Reader, name string, target any) error {
+	data, err := readEntry(ctx, findEntry(zr, name))
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
+}
 
-	processed := 0
-	for _, item := range items {
-		if existingIDs[item.ID] {
-			if _, err := store.UpdateItem(item); err != nil {
-				log.Printf("warning: failed to update item %q: %v", item.Title, err)
-				continue
+func detectBackupFormat(zr *zip.Reader) (string, error) {
+	local, cloud := findEntry(zr, "collection.db") != nil, findEntry(zr, "items.json") != nil
+	if local == cloud {
+		return "", fmt.Errorf("backup must contain exactly one of collection.db or items.json")
+	}
+	if local {
+		return "local", nil
+	}
+	return "cloud", nil
+}
+
+func loadBackup(ctx context.Context, zr *zip.Reader) (storage.Snapshot, string, []string, error) {
+	snapshot := storage.Snapshot{Version: storage.SnapshotVersion, Items: []storage.Item{}, Modules: []storage.ModuleSchema{}, Settings: json.RawMessage(`{}`)}
+	warnings := []string{}
+	if err := validateArchive(ctx, zr); err != nil {
+		return snapshot, "", nil, err
+	}
+	format, err := detectBackupFormat(zr)
+	if err != nil {
+		return snapshot, "", nil, err
+	}
+	if findEntry(zr, "manifest.json") != nil {
+		var manifest backupManifest
+		if err := decodeEntry(ctx, zr, "manifest.json", &manifest); err != nil {
+			return snapshot, format, nil, err
+		}
+		if manifest.Format != "omnicollect" || manifest.Version != storage.SnapshotVersion || format != "cloud" {
+			return snapshot, format, nil, fmt.Errorf("unsupported backup format or version")
+		}
+		if findEntry(zr, "modules.json") == nil || findEntry(zr, "settings.json") == nil {
+			return snapshot, format, nil, fmt.Errorf("portable backup is missing required metadata")
+		}
+	} else {
+		warnings = append(warnings, "Legacy backup: settings or media may be absent.")
+	}
+	if format == "local" {
+		if err := readLegacyDatabase(ctx, zr, &snapshot); err != nil {
+			return snapshot, format, nil, err
+		}
+		for _, file := range zr.File {
+			if strings.HasPrefix(file.Name, "modules/") && !file.FileInfo().IsDir() {
+				var module storage.ModuleSchema
+				if err := decodeEntry(ctx, zr, file.Name, &module); err != nil {
+					return snapshot, format, nil, err
+				}
+				snapshot.Modules = append(snapshot.Modules, module)
 			}
+		}
+	} else {
+		if err := decodeEntry(ctx, zr, "items.json", &snapshot.Items); err != nil {
+			return snapshot, format, nil, err
+		}
+		if snapshot.Items == nil {
+			return snapshot, format, nil, fmt.Errorf("items.json must be an array")
+		}
+		if findEntry(zr, "modules.json") != nil {
+			if err := decodeEntry(ctx, zr, "modules.json", &snapshot.Modules); err != nil {
+				return snapshot, format, nil, err
+			}
+			if snapshot.Modules == nil {
+				return snapshot, format, nil, fmt.Errorf("modules.json must be an array")
+			}
+		}
+	}
+	if file := findEntry(zr, "settings.json"); file != nil {
+		data, err := readEntry(ctx, file)
+		if err != nil {
+			return snapshot, format, nil, err
+		}
+		snapshot.Settings = data
+	}
+	if err := storage.ValidateSnapshot(snapshot); err != nil {
+		return snapshot, format, nil, err
+	}
+	missing := 0
+	for name := range snapshotImages(snapshot) {
+		if findEntry(zr, "media/originals/"+name) == nil {
+			missing++
+		}
+	}
+	if missing > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d referenced originals are absent; they must already exist in the destination to restore.", missing))
+	}
+	return snapshot, format, warnings, nil
+}
+
+func openBackupZip(filename string) (*zip.ReadCloser, error) {
+	if err := preflightZIP(filename); err != nil {
+		return nil, err
+	}
+	return zip.OpenReader(filename)
+}
+func analyzeBackupZip(ctx context.Context, filename string) (ImportSummary, error) {
+	release, err := acquireArchiveWorker(ctx)
+	if err != nil {
+		return ImportSummary{}, err
+	}
+	defer release()
+	zr, err := openBackupZip(filename)
+	if err != nil {
+		return ImportSummary{}, err
+	}
+	defer zr.Close()
+	snapshot, format, warnings, err := loadBackup(ctx, &zr.Reader)
+	if err != nil {
+		return ImportSummary{}, err
+	}
+	return ImportSummary{Format: format, ItemCount: len(snapshot.Items), ModuleCount: len(snapshot.Modules), ImageCount: len(snapshotImages(snapshot)), Warnings: warnings}, nil
+}
+func snapshotImages(snapshot storage.Snapshot) map[string]bool {
+	names := map[string]bool{}
+	for _, item := range snapshot.Items {
+		for _, name := range item.Images {
+			names[name] = true
+		}
+	}
+	return names
+}
+
+// stageBackupMedia remaps references to validated content-addressed keys, without
+// overwriting any differently named live content. Thumbnails are regenerated.
+// Failed stages may leave unreferenced immutable files; never delete them here:
+// a concurrent upload/restore could already reference the same content.
+func stageBackupMedia(ctx context.Context, zr *zip.Reader, snapshot *storage.Snapshot, media storage.MediaStore) (int, error) {
+	remap := map[string]string{}
+	for old := range snapshotImages(*snapshot) {
+		var data []byte
+		var err error
+		if entry := findEntry(zr, "media/originals/"+old); entry != nil {
+			data, err = readEntry(ctx, entry)
 		} else {
-			if _, err := store.InsertItem(item); err != nil {
-				log.Printf("warning: failed to insert item %q: %v", item.Title, err)
-				continue
-			}
+			data, err = media.GetOriginal(ctx, old)
 		}
-		processed++
+		if err != nil {
+			return 0, fmt.Errorf("missing or unreadable original %q: %w", old, err)
+		}
+		processed, err := processImageBytes(ctx, data)
+		if err != nil {
+			return 0, fmt.Errorf("invalid original %q: %w", old, err)
+		}
+		if _, err := persistProcessedImage(ctx, media, processed); err != nil {
+			return 0, err
+		}
+		remap[old] = processed.Filename
 	}
-
-	// Upsert modules
-	for _, mod := range modules {
-		if err := store.SaveModule(mod); err != nil {
-			log.Printf("warning: failed to save module %q: %v", mod.ID, err)
+	for i := range snapshot.Items {
+		for j, old := range snapshot.Items[i].Images {
+			snapshot.Items[i].Images[j] = remap[old]
 		}
 	}
-
-	return processed, nil
+	return len(remap), nil
 }
 
-// checkMissingModules returns warnings for items that reference module IDs
-// not present in the backup's module schemas.
-func checkMissingModules(items []storage.Item, modules []storage.ModuleSchema) []string {
-	moduleIDs := make(map[string]bool, len(modules))
-	for _, m := range modules {
-		moduleIDs[m.ID] = true
-	}
-
-	// Count items per missing module
-	missingCounts := make(map[string]int)
-	for _, item := range items {
-		if !moduleIDs[item.ModuleID] {
-			missingCounts[item.ModuleID]++
-		}
-	}
-
-	var warnings []string
-	for modID, count := range missingCounts {
-		warnings = append(warnings, fmt.Sprintf("%d item(s) reference module %q which was not found in the backup", count, modID))
-	}
-	return warnings
-}
-
-// queryAllItemsFromDB reads all items from a SQLite database.
-func queryAllItemsFromDB(db *sql.DB) ([]storage.Item, error) {
-	rows, err := db.Query(
-		`SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at
-		 FROM items ORDER BY updated_at DESC`,
-	)
+// readLegacyDatabase opens only the uploaded database, read-only with trusted
+// schema disabled. It handles backups from before the tags column existed.
+func readLegacyDatabase(ctx context.Context, zr *zip.Reader, snapshot *storage.Snapshot) error {
+	data, err := readEntry(ctx, findEntry(zr, "collection.db"))
 	if err != nil {
-		return nil, fmt.Errorf("querying items: %w", err)
+		return err
+	}
+	file, err := os.CreateTemp("", "omnicollect-legacy-*.db")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	u := url.URL{Scheme: "file", Path: file.Name(), RawQuery: "mode=ro&immutable=1"}
+	db, err := sql.Open("sqlite", u.String())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if _, err = db.ExecContext(ctx, "PRAGMA trusted_schema=OFF"); err != nil {
+		return err
+	}
+	columns, err := db.QueryContext(ctx, "PRAGMA table_info(items)")
+	if err != nil {
+		return err
+	}
+	tags := "'[]'"
+	for columns.Next() {
+		var cid, notnull, pk int
+		var name, kind string
+		var defaultValue any
+		if err := columns.Scan(&cid, &name, &kind, &notnull, &defaultValue, &pk); err != nil {
+			columns.Close()
+			return err
+		}
+		if name == "tags" {
+			tags = "tags"
+		}
+	}
+	err = columns.Err()
+	columns.Close()
+	if err != nil {
+		return err
+	}
+	rows, err := db.QueryContext(ctx, "SELECT id,module_id,title,purchase_price,images,"+tags+",attributes,created_at,updated_at FROM items LIMIT 100001")
+	if err != nil {
+		return err
 	}
 	defer rows.Close()
-
-	var items []storage.Item
 	for rows.Next() {
 		var item storage.Item
-		var imagesJSON, tagsJSON, attrsJSON string
+		var images, tagData, attributes string
 		var price sql.NullFloat64
-
-		if err := rows.Scan(
-			&item.ID, &item.ModuleID, &item.Title, &price,
-			&imagesJSON, &tagsJSON, &attrsJSON,
-			&item.CreatedAt, &item.UpdatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scanning item row: %w", err)
+		if err := rows.Scan(&item.ID, &item.ModuleID, &item.Title, &price, &images, &tagData, &attributes, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return err
 		}
-
 		if price.Valid {
 			item.PurchasePrice = &price.Float64
 		}
-
-		if err := json.Unmarshal([]byte(imagesJSON), &item.Images); err != nil {
-			item.Images = []string{}
-		}
-		if err := json.Unmarshal([]byte(tagsJSON), &item.Tags); err != nil {
-			item.Tags = []string{}
-		}
-		if err := json.Unmarshal([]byte(attrsJSON), &item.Attributes); err != nil {
-			item.Attributes = map[string]any{}
-		}
-
-		items = append(items, item)
-	}
-	if items == nil {
-		items = []storage.Item{}
-	}
-	return items, rows.Err()
-}
-
-// extractFileFromZip extracts a single file from the ZIP to a temp file
-// and returns the temp file path. Caller is responsible for cleanup.
-func extractFileFromZip(zr *zip.Reader, name string) (string, error) {
-	for _, f := range zr.File {
-		if f.Name == name {
-			rc, err := f.Open()
-			if err != nil {
-				return "", fmt.Errorf("opening %s: %w", name, err)
+		for _, pair := range []struct {
+			data  string
+			value any
+		}{{images, &item.Images}, {tagData, &item.Tags}, {attributes, &item.Attributes}} {
+			if err := json.Unmarshal([]byte(pair.data), pair.value); err != nil {
+				return fmt.Errorf("invalid legacy item JSON: %w", err)
 			}
-			defer rc.Close()
-
-			tmp, err := os.CreateTemp("", "omnicollect-import-*")
-			if err != nil {
-				return "", fmt.Errorf("creating temp file: %w", err)
-			}
-
-			if _, err := io.Copy(tmp, rc); err != nil {
-				tmp.Close()
-				os.Remove(tmp.Name())
-				return "", fmt.Errorf("extracting %s: %w", name, err)
-			}
-			tmp.Close()
-			return tmp.Name(), nil
 		}
+		for _, timestamp := range []*string{&item.CreatedAt, &item.UpdatedAt} {
+			if parsed, err := time.Parse("2006-01-02 15:04:05", *timestamp); err == nil {
+				*timestamp = parsed.UTC().Format(time.RFC3339Nano)
+			}
+		}
+		snapshot.Items = append(snapshot.Items, item)
 	}
-	return "", fmt.Errorf("%s not found in ZIP", name)
+	return rows.Err()
 }

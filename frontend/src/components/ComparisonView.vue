@@ -1,6 +1,7 @@
 <!-- ABOUTME: Side-by-side comparison view for exactly two collection items. -->
 <!-- ABOUTME: Synchronized image galleries and attribute diff table with difference highlighting. -->
 <script lang="ts" setup>
+import MediaImage from './MediaImage.vue'
 import {ref, computed} from 'vue'
 import type {Item, ModuleSchema, AttributeSchema} from '../api/types'
 
@@ -100,10 +101,16 @@ const diffRows = computed<DiffRow[]>(() => {
   return rows
 })
 
+function imageLoadHandler(event: Event) {
+  const img = event.target as HTMLImageElement
+  img.style.display = ''
+  const placeholder = img.closest('.gallery-frame')?.querySelector('.gallery-placeholder') as HTMLElement | null
+  if (placeholder) placeholder.style.display = 'none'
+}
 function imageErrorHandler(event: Event) {
   const img = event.target as HTMLImageElement
   img.style.display = 'none'
-  const placeholder = img.nextElementSibling as HTMLElement
+  const placeholder = img.closest('.gallery-frame')?.querySelector('.gallery-placeholder') as HTMLElement | null
   if (placeholder) placeholder.style.display = 'flex'
 }
 </script>
@@ -123,12 +130,12 @@ function imageErrorHandler(event: Event) {
       <div class="gallery-side">
         <div class="gallery-frame">
           <template v-if="itemA.images && itemA.images.length > 0">
-            <img
+            <MediaImage
               :src="'/originals/' + encodeURIComponent(itemA.images[effectiveIndexA])"
               alt=""
-              @error="imageErrorHandler"
-              @click="emit('viewImage', itemA.images[effectiveIndexA])"
+              @error="imageErrorHandler" @load="imageLoadHandler"
             />
+            <button class="open-comparison-image" :aria-label="'Open full-size image for ' + itemA.title" @click="emit('viewImage', itemA.images[effectiveIndexA])"></button>
             <div class="gallery-placeholder" style="display: none">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
@@ -151,12 +158,12 @@ function imageErrorHandler(event: Event) {
       <div class="gallery-side">
         <div class="gallery-frame">
           <template v-if="itemB.images && itemB.images.length > 0">
-            <img
+            <MediaImage
               :src="'/originals/' + encodeURIComponent(itemB.images[effectiveIndexB])"
               alt=""
-              @error="imageErrorHandler"
-              @click="emit('viewImage', itemB.images[effectiveIndexB])"
+              @error="imageErrorHandler" @load="imageLoadHandler"
             />
+            <button class="open-comparison-image" :aria-label="'Open full-size image for ' + itemB.title" @click="emit('viewImage', itemB.images[effectiveIndexB])"></button>
             <div class="gallery-placeholder" style="display: none">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3">
                 <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
@@ -265,6 +272,8 @@ function imageErrorHandler(event: Event) {
   flex-direction: column;
   gap: 8px;
 }
+.open-comparison-image { position: absolute; inset: 0; z-index: 1; border: 0; background: transparent; cursor: zoom-in; }
+.open-comparison-image:focus-visible { outline-offset: -3px; }
 .gallery-frame {
   position: relative;
   background: var(--bg-secondary);

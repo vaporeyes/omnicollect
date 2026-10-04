@@ -13,6 +13,30 @@ export interface Item {
   updatedAt: string
 }
 
+// Explicit bounded read, global-summary and deletion-recovery contracts.
+export interface DeletionBatch {
+  recoveryId: string
+  deleted: number
+  createdAt: string
+  titles: string[]
+}
+
+export interface ItemPage {
+  items: Item[]
+  limit: number
+  offset: number
+  hasMore: boolean
+}
+export interface CollectionSummary {
+  items: number
+  pricedItems: number
+  invalidPrices: number
+  purchaseTotal: number | null
+  valueAvailable: boolean
+  modules: {moduleId: string; items: number}[]
+  modulesTruncated: boolean
+}
+
 export interface TagCount {
   name: string
   count: number

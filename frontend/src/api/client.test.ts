@@ -1,7 +1,7 @@
 // ABOUTME: Unit tests for the centralized fetch-based HTTP client.
 // ABOUTME: Mocks global fetch to verify request construction and response handling.
 import {describe, it, expect, vi, beforeEach} from 'vitest'
-import {get, post, del, postFile, downloadFile} from './client'
+import {get, getMedia, post, put, del, postFile, downloadFile, setTokenGetter} from './client'
 
 function mockFetch(body: any, status = 200, headers: Record<string, string> = {}) {
   const respHeaders = new Headers(headers)
@@ -9,6 +9,7 @@ function mockFetch(body: any, status = 200, headers: Record<string, string> = {}
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
     blob: () => Promise.resolve(new Blob(['data'])),
     headers: respHeaders,
   } as unknown as Response)
@@ -16,6 +17,7 @@ function mockFetch(body: any, status = 200, headers: Record<string, string> = {}
 
 beforeEach(() => {
   vi.restoreAllMocks()
+  setTokenGetter(null)
 })
 
 describe('get', () => {
@@ -23,12 +25,60 @@ describe('get', () => {
     global.fetch = mockFetch([{id: '1', title: 'Test'}])
     const result = await get<any[]>('/api/v1/items')
     expect(result).toEqual([{id: '1', title: 'Test'}])
-    expect(fetch).toHaveBeenCalledWith('/api/v1/items')
+    expect(fetch).toHaveBeenCalledWith('/api/v1/items', {headers: {}, signal: expect.any(AbortSignal)})
   })
 
   it('throws on non-ok response', async () => {
     global.fetch = mockFetch({error: 'not found'}, 404)
     await expect(get('/api/v1/items/bad')).rejects.toThrow('not found')
+  })
+})
+
+describe('empty responses and authentication', () => {
+  it('accepts empty 204 and 200 responses', async () => {
+    for (const status of [204, 200]) {
+      global.fetch = vi.fn().mockResolvedValue(new Response(null, {status}))
+      await expect(put('/api/v1/settings', {})).resolves.toBeUndefined()
+    }
+  })
+
+  it('does not send anonymous requests when token acquisition fails', async () => {
+    setTokenGetter(async () => { throw new Error('Login required') })
+    global.fetch = vi.fn()
+    await expect(get('/api/v1/items')).rejects.toThrow('Login required')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+it('rejects empty tokens without sending a request', async () => {
+  global.fetch = vi.fn()
+  for (const value of ['', '   ', undefined]) {
+    setTokenGetter(async () => value as string)
+    await expect(get('/api/v1/items')).rejects.toThrow('access token')
+  }
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+describe('getMedia', () => {
+  it('uses authorization headers and never puts a token in the URL', async () => {
+    setTokenGetter(async () => 'private-token')
+    global.fetch = vi.fn().mockResolvedValue(new Response('png', {headers: {'Content-Type': 'image/png'}}))
+    const controller = new AbortController()
+    const blob = await getMedia('/originals/image.png', controller.signal)
+    expect(blob.type).toBe('image/png')
+    expect(fetch).toHaveBeenCalledWith('/originals/image.png', {
+      headers: {Authorization: 'Bearer private-token'}, signal: expect.any(AbortSignal),
+    })
+  })
+
+  it('rejects external URLs, non-image responses, and authorization failures', async () => {
+    global.fetch = vi.fn()
+    await expect(getMedia('https://evil.example/image.png')).rejects.toThrow('Invalid media path')
+    expect(fetch).not.toHaveBeenCalled()
+    global.fetch = vi.fn().mockResolvedValue(new Response('not an image'))
+    await expect(getMedia('/thumbnails/image.png')).rejects.toThrow('Invalid image response')
+    global.fetch = mockFetch({error: 'Login required'}, 401)
+    await expect(getMedia('/thumbnails/image.png')).rejects.toThrow('Login required')
   })
 })
 
@@ -80,6 +130,7 @@ describe('downloadFile', () => {
       href: '',
       download: '',
       click: clickSpy,
+      remove: vi.fn(),
     } as unknown as HTMLAnchorElement)
     vi.spyOn(document.body, 'appendChild').mockImplementation((el) => el)
     vi.spyOn(document.body, 'removeChild').mockImplementation((el) => el)

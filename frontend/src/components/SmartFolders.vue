@@ -3,6 +3,7 @@
 // ABOUTME: Displays folder list with save, apply, rename, and delete support.
 
 import {ref, nextTick} from 'vue'
+import {menuAnchor} from '../composables/menuAnchor'
 import {useSmartFolderStore, type SmartFolder} from '../stores/smartFolderStore'
 import type {AttributeFilter} from '../stores/collectionStore'
 
@@ -55,13 +56,12 @@ function cancelSave() {
 }
 
 function onFolderClick(folder: SmartFolder) {
-  store.setActive(folder.id)
   emit('apply', folder)
 }
 
 function onFolderContextMenu(e: MouseEvent, folder: SmartFolder) {
-  e.preventDefault()
-  emit('contextMenu', folder, e.clientX, e.clientY)
+  const {x, y} = menuAnchor(e)
+  emit('contextMenu', folder, x, y)
 }
 
 // Called externally when context menu selects "Rename"
@@ -96,17 +96,25 @@ defineExpose({startRename})
       <span class="sf-title">Saved Views</span>
     </div>
 
-    <div v-if="store.folders.length === 0 && !showSaveInput" class="sf-empty">
+    <p v-if="!store.baselineReady" role="status" class="sf-empty">Saved views are unavailable until settings load. Creation and edits are disabled.</p>
+    <p v-else-if="store.deletionUncertain" role="alert" class="sf-empty">Deletion was not confirmed. Reload to inspect saved views before making more changes.</p>
+    <p v-else-if="store.saveError" role="alert" class="sf-empty">
+      {{ store.saveError }}. The server may differ. Retry saves the current local views.
+      <button :disabled="store.saving" @click="store.saveToSettings()">Retry save</button>
+    </p>
+    <p v-else-if="store.saving" role="status" class="sf-empty">Saving views...</p>
+    <div v-if="store.baselineReady && store.folders.length === 0 && !showSaveInput" class="sf-empty">
       No saved views yet
     </div>
 
-    <div class="sf-list">
+    <div v-if="store.baselineReady" class="sf-list">
       <div
         v-for="folder in store.folders"
         :key="folder.id"
         class="sf-item"
         :class="{active: store.activeSmartFolderId === folder.id}"
-        @click="onFolderClick(folder)"
+        role="group"
+        :aria-label="folder.name"
         @contextmenu="onFolderContextMenu($event, folder)"
       >
         <svg class="sf-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -115,15 +123,18 @@ defineExpose({startRename})
         </svg>
         <input
           v-if="renamingId === folder.id"
-          ref="renameInputRef"
+          :ref="element => {renameInputRef = element as HTMLInputElement | null}"
           v-model="renameValue"
           class="sf-rename-input"
-          @keydown.enter="confirmRename"
-          @keydown.esc="cancelRename"
+          aria-label="Saved view name"
+          :disabled="!store.baselineReady || store.saving || store.deletionUncertain"
+          @keydown.enter.stop="confirmRename"
+          @keydown.esc.stop="cancelRename"
           @blur="confirmRename"
           @click.stop
         />
-        <span v-else class="sf-name">{{ folder.name }}</span>
+        <button v-else class="sf-name sf-link" :aria-pressed="store.activeSmartFolderId === folder.id" @click="onFolderClick(folder)">{{ folder.name }}</button>
+        <button class="sf-link" aria-haspopup="menu" :aria-label="`Actions for saved view ${folder.name}`" @click="onFolderContextMenu($event, folder)">⋯</button>
       </div>
     </div>
 
@@ -139,13 +150,15 @@ defineExpose({startRename})
       />
     </div>
 
-    <button v-if="!showSaveInput" class="sf-save-btn" @click="startSave">
+    <button v-if="!showSaveInput" class="sf-save-btn" :disabled="!store.baselineReady || store.saving || store.deletionUncertain" @click="startSave">
       Save Current View
     </button>
   </div>
 </template>
 
 <style scoped>
+.sf-link {border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left;}
+.sf-name.sf-link {flex: 1;}
 .smart-folders {
   padding: 8px 0;
   border-top: 1px solid var(--border-primary);

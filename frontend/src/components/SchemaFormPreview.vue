@@ -48,9 +48,10 @@ const formAttributes = computed((): AttributeSchema[] => {
       </div>
 
       <!-- Dynamic fields from schema -->
-      <div v-for="attr in formAttributes" :key="attr.name" class="preview-field">
+      <div v-for="(attr, index) in formAttributes" :key="index" class="preview-field">
         <FormField
           :attribute="attr"
+          :disabled="true"
           :modelValue="null"
           @update:modelValue="() => {}"
         />

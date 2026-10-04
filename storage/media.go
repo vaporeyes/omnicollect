@@ -1,12 +1,16 @@
-// ABOUTME: MediaStore interface for image storage abstraction.
-// ABOUTME: Implemented by LocalMediaStore (filesystem) and S3MediaStore (cloud).
+// ABOUTME: Context-aware media storage with explicit tenant namespaces.
+// ABOUTME: Callers must scope cloud media before reading or writing private files.
 package storage
 
-// MediaStore defines operations for storing and retrieving media files.
-// Implementations: LocalMediaStore (local filesystem) and S3MediaStore (S3-compatible).
+import "context"
+
+// MediaStore reads and writes images within one namespace.
+// ForTenant derives an isolated namespace from a trusted tenant identifier.
 type MediaStore interface {
-	SaveOriginal(filename string, data []byte) error
-	SaveThumbnail(filename string, data []byte) error
-	OriginalURL(filename string) string
-	ThumbnailURL(filename string) string
+	CheckOriginal(ctx context.Context, filename string) error
+	SaveOriginal(ctx context.Context, filename string, data []byte) error
+	SaveThumbnail(ctx context.Context, filename string, data []byte) error
+	GetOriginal(ctx context.Context, filename string) ([]byte, error)
+	GetThumbnail(ctx context.Context, filename string) ([]byte, error)
+	ForTenant(tenant string) (MediaStore, error)
 }

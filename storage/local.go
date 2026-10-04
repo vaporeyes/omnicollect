@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,29 +46,78 @@ func (m *LocalMediaStore) BaseDir() string {
 }
 
 // SaveOriginal writes original image bytes to the originals directory.
-func (m *LocalMediaStore) SaveOriginal(filename string, data []byte) error {
+func (m *LocalMediaStore) SaveOriginal(ctx context.Context, filename string, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := ValidateFilename(filename); err != nil {
+		return err
+	}
 	path := filepath.Join(m.baseDir, "originals", filename)
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := AtomicWriteFile(path, data); err != nil {
 		return fmt.Errorf("writing original: %w", err)
 	}
 	return nil
 }
 
 // SaveThumbnail writes thumbnail image bytes to the thumbnails directory.
-func (m *LocalMediaStore) SaveThumbnail(filename string, data []byte) error {
+func (m *LocalMediaStore) SaveThumbnail(ctx context.Context, filename string, data []byte) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := ValidateFilename(filename); err != nil {
+		return err
+	}
 	path := filepath.Join(m.baseDir, "thumbnails", filename)
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := AtomicWriteFile(path, data); err != nil {
 		return fmt.Errorf("writing thumbnail: %w", err)
 	}
 	return nil
 }
 
-// OriginalURL returns the URL path for serving an original image.
-func (m *LocalMediaStore) OriginalURL(filename string) string {
-	return "/originals/" + filename
+// CheckOriginal verifies a confined regular file without loading its contents.
+func (m *LocalMediaStore) CheckOriginal(ctx context.Context, filename string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := ValidateFilename(filename); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(filepath.Join(m.baseDir, "originals"))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	info, err := root.Stat(filename)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 || info.Size() > 30<<20 {
+		return fmt.Errorf("invalid original file")
+	}
+	return nil
 }
 
-// ThumbnailURL returns the URL path for serving a thumbnail image.
-func (m *LocalMediaStore) ThumbnailURL(filename string) string {
-	return "/thumbnails/" + filename
+// GetOriginal reads a confined, size-bounded original image.
+func (m *LocalMediaStore) GetOriginal(ctx context.Context, filename string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ReadFileAt(filepath.Join(m.baseDir, "originals"), filename, 30<<20)
+}
+
+// GetThumbnail reads a confined, size-bounded thumbnail.
+func (m *LocalMediaStore) GetThumbnail(ctx context.Context, filename string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return ReadFileAt(filepath.Join(m.baseDir, "thumbnails"), filename, 2<<20)
+}
+
+// ForTenant creates a filesystem namespace without mutating the base store.
+func (m *LocalMediaStore) ForTenant(tenant string) (MediaStore, error) {
+	if err := ValidateFilename(tenant); err != nil {
+		return nil, err
+	}
+	return NewLocalMediaStoreAt(filepath.Join(m.baseDir, "tenants", tenant)), nil
 }

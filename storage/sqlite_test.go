@@ -359,6 +359,9 @@ func TestBulkUpdateModule(t *testing.T) {
 		ids = append(ids, saved.ID)
 	}
 
+	if err := store.SaveModule(ModuleSchema{ID: "new-module", DisplayName: "New"}); err != nil {
+		t.Fatal(err)
+	}
 	updated, err := store.BulkUpdateModule(ids, "new-module")
 	if err != nil {
 		t.Fatalf("BulkUpdateModule: %v", err)
@@ -432,14 +435,13 @@ func TestExportItemsCSV_Empty(t *testing.T) {
 func TestGetModules_Empty(t *testing.T) {
 	store := newTestStore(t)
 
-	// GetModules reads from disk, which in a test context may or may not have
-	// modules. We just verify it returns without error and gives a slice.
+	// Every fixture starts with an empty, isolated module table.
 	modules, err := store.GetModules()
 	if err != nil {
 		t.Fatalf("GetModules: %v", err)
 	}
-	if modules == nil {
-		t.Error("expected non-nil slice")
+	if modules == nil || len(modules) != 0 {
+		t.Errorf("expected empty non-nil slice, got %+v", modules)
 	}
 }
 
@@ -484,12 +486,8 @@ func TestGetSettings_Empty(t *testing.T) {
 	store := newTestStore(t)
 
 	settings, err := store.GetSettings()
-	// Either returns empty JSON or an error; both are acceptable
-	if err != nil && settings != "{}" {
-		t.Fatalf("GetSettings: unexpected error: %v", err)
-	}
-	if settings == "" {
-		t.Error("expected non-empty settings string (at least '{}')")
+	if err != nil || settings != "{}" {
+		t.Fatalf("GetSettings: got %q, %v; want empty object without error", settings, err)
 	}
 }
 

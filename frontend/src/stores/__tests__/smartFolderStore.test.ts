@@ -14,6 +14,7 @@ vi.mock('../../api/client', () => ({
 describe('smartFolderStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    useSmartFolderStore().loadFromSettings({})
   })
 
   it('starts with empty folders', () => {
@@ -75,28 +76,31 @@ describe('smartFolderStore', () => {
     expect(store.rename('nonexistent', 'Name')).toBe(false)
   })
 
-  it('deletes a folder', () => {
+  it('deletes a folder after persistence', async () => {
     const store = useSmartFolderStore()
     const folder = store.create('To Delete', '', '', {}, [])!
-    store.remove(folder.id)
+    await store.saveToSettings()
+    await store.remove(folder.id)
     expect(store.folders).toHaveLength(0)
   })
 
-  it('clears activeSmartFolderId when active folder is deleted', () => {
+  it('clears activeSmartFolderId when active folder is deleted', async () => {
     const store = useSmartFolderStore()
     const folder = store.create('Active', '', '', {}, [])!
     store.setActive(folder.id)
     expect(store.activeSmartFolderId).toBe(folder.id)
-    store.remove(folder.id)
+    await store.saveToSettings()
+    await store.remove(folder.id)
     expect(store.activeSmartFolderId).toBeNull()
   })
 
-  it('does not clear activeSmartFolderId when a different folder is deleted', () => {
+  it('does not clear activeSmartFolderId when a different folder is deleted', async () => {
     const store = useSmartFolderStore()
     const f1 = store.create('Keep', '', '', {}, [])!
     const f2 = store.create('Delete', '', '', {}, [])!
     store.setActive(f1.id)
-    store.remove(f2.id)
+    await store.saveToSettings()
+    await store.remove(f2.id)
     expect(store.activeSmartFolderId).toBe(f1.id)
   })
 

@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import MediaImage from './MediaImage.vue'
 import {ref, computed} from 'vue'
 import type {Item, ModuleSchema, AttributeSchema} from '../api/types'
 import MarkdownRenderer from './MarkdownRenderer.vue'
@@ -16,21 +17,6 @@ const emit = defineEmits<{
 }>()
 
 const activeImageIndex = ref(0)
-const showDeleteConfirm = ref(false)
-
-function confirmDelete() {
-  showDeleteConfirm.value = true
-}
-
-function cancelDelete() {
-  showDeleteConfirm.value = false
-}
-
-function executeDelete() {
-  showDeleteConfirm.value = false
-  emit('delete')
-}
-
 const hasImages = computed(() => props.item.images && props.item.images.length > 0)
 const imageCount = computed(() => props.item.images?.length ?? 0)
 
@@ -82,7 +68,7 @@ function nextImage() {
       </button>
       <div class="topbar-actions">
         <button class="action-btn action-edit" @click="emit('edit')" title="Edit item">Edit</button>
-        <button class="action-btn action-delete" @click="confirmDelete" title="Delete item">Delete</button>
+        <button class="action-btn action-delete" @click="emit('delete')" title="Delete item">Delete</button>
       </div>
     </div>
 
@@ -92,17 +78,14 @@ function nextImage() {
       <div class="split-left">
         <div class="gallery-sticky">
           <div v-if="hasImages" class="gallery-main">
-            <img
-              :src="'/originals/' + encodeURIComponent(item.images[activeImageIndex])"
-              alt=""
-              class="gallery-image"
-              @click="emit('viewImage', item.images[activeImageIndex])"
-            />
+            <button class="gallery-open" :aria-label="'Open full-size image for ' + item.title" @click="emit('viewImage', item.images[activeImageIndex])">
+              <MediaImage :src="'/originals/' + encodeURIComponent(item.images[activeImageIndex])" alt="" class="gallery-image" />
+            </button>
             <div class="gallery-inner-shadow"></div>
             <!-- Nav arrows overlaid on image -->
             <button
               v-if="imageCount > 1"
-              class="gallery-arrow gallery-arrow-prev"
+              class="gallery-arrow gallery-arrow-prev" aria-label="Previous image"
               :disabled="activeImageIndex === 0"
               @click="prevImage"
             >
@@ -110,7 +93,7 @@ function nextImage() {
             </button>
             <button
               v-if="imageCount > 1"
-              class="gallery-arrow gallery-arrow-next"
+              class="gallery-arrow gallery-arrow-next" aria-label="Next image"
               :disabled="activeImageIndex === imageCount - 1"
               @click="nextImage"
             >
@@ -133,14 +116,9 @@ function nextImage() {
 
           <!-- Thumbnail strip -->
           <div v-if="imageCount > 1" class="gallery-thumbs">
-            <img
-              v-for="(filename, idx) in item.images"
-              :key="filename"
-              :src="'/thumbnails/' + encodeURIComponent(filename)"
-              :class="['thumb', {active: idx === activeImageIndex}]"
-              @click="activeImageIndex = idx"
-              alt=""
-            />
+            <button v-for="(filename, idx) in item.images" :key="filename" :class="['thumb', {active: idx === activeImageIndex}]" :aria-label="'Show image ' + (idx + 1)" :aria-pressed="idx === activeImageIndex" @click="activeImageIndex = idx">
+              <MediaImage :src="'/thumbnails/' + encodeURIComponent(filename)" alt="" class="thumb-image" />
+            </button>
           </div>
         </div>
       </div>
@@ -211,19 +189,6 @@ function nextImage() {
       </div>
     </div>
 
-    <!-- Delete confirmation dialog -->
-    <Teleport to="body">
-      <div v-if="showDeleteConfirm" class="confirm-overlay" @click.self="cancelDelete">
-        <div class="confirm-dialog">
-          <p class="confirm-title">Delete "{{ item.title }}"?</p>
-          <p class="confirm-message">This action cannot be undone.</p>
-          <div class="confirm-actions">
-            <button class="confirm-cancel-btn" @click="cancelDelete">Cancel</button>
-            <button class="confirm-delete-btn" @click="executeDelete">Delete</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
@@ -313,6 +278,8 @@ function nextImage() {
   align-items: center;
   justify-content: center;
 }
+.gallery-open { width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.thumb-image { width: 100%; height: 100%; object-fit: cover; }
 .gallery-image {
   width: 100%;
   height: 100%;
@@ -350,7 +317,8 @@ function nextImage() {
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
-.gallery-main:hover .gallery-arrow {
+.gallery-main:hover .gallery-arrow,
+.gallery-main:focus-within .gallery-arrow {
   opacity: 1;
 }
 .gallery-arrow:disabled {
@@ -387,6 +355,8 @@ function nextImage() {
   padding: 2px 0;
 }
 .thumb {
+  padding: 0;
+  background: transparent;
   width: 52px;
   height: 52px;
   object-fit: cover;
@@ -522,70 +492,6 @@ function nextImage() {
   letter-spacing: var(--tracking-wide);
   color: var(--text-muted);
   margin-bottom: 4px;
-}
-
-/* --- Confirmation dialog --- */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.confirm-dialog {
-  background: var(--bg-primary, #1e1e2e);
-  border: 1px solid var(--border-primary, #333);
-  border-radius: var(--radius-md);
-  padding: 28px;
-  max-width: 360px;
-  width: 90%;
-  box-shadow: var(--shadow-lg);
-}
-.confirm-title {
-  margin: 0 0 4px;
-  font-family: var(--font-heading);
-  font-size: 18px;
-  font-weight: 400;
-  color: var(--text-primary);
-}
-.confirm-message {
-  margin: 0 0 24px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.confirm-cancel-btn {
-  padding: 8px 18px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 13px;
-  font-family: var(--font-body);
-}
-.confirm-cancel-btn:hover {
-  background: var(--bg-hover);
-}
-.confirm-delete-btn {
-  padding: 8px 18px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--error-border, #dc2626);
-  color: #fff;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font-body);
-}
-.confirm-delete-btn:hover {
-  background: #b91c1c;
 }
 
 /* Tag display chips */

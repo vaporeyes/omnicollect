@@ -3,22 +3,24 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"omnicollect/tenantid"
+	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // PostgresStore implements Store using PostgreSQL with schema-per-tenant isolation.
 type PostgresStore struct {
 	db           *sql.DB
+	requestCtx   context.Context
 	tenantSchema string
-	mu           sync.RWMutex
 }
 
 // NewPostgresStore connects to PostgreSQL and initializes the tenant schema.
@@ -33,7 +35,7 @@ func NewPostgresStore(databaseURL, tenantID string) (*PostgresStore, error) {
 		return nil, fmt.Errorf("pinging postgres: %w", err)
 	}
 
-	schema := "tenant_" + sanitizeTenantID(tenantID)
+	schema := tenantid.Local(tenantID)
 	store := &PostgresStore{db: db, tenantSchema: schema}
 
 	if err := store.initTenantSchema(); err != nil {
@@ -70,8 +72,8 @@ func NewPostgresStoreNoTenant(databaseURL string) (*PostgresStore, error) {
 }
 
 // Ping checks database connectivity.
-func (s *PostgresStore) Ping(ctx interface{ Deadline() (time.Time, bool) }) error {
-	return s.db.Ping()
+func (s *PostgresStore) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
 }
 
 // DB returns the underlying *sql.DB for migration operations.
@@ -84,54 +86,41 @@ func (s *PostgresStore) TenantSchema() string {
 	return s.tenantSchema
 }
 
-// SetTenantSchema changes the default tenant schema for subsequent operations.
-// Deprecated: prefer WithTenantSchema() for per-request isolation in concurrent servers.
-// Retained for backward compatibility with local-mode (single-tenant) usage.
-func (s *PostgresStore) SetTenantSchema(schema string) {
-	s.mu.Lock()
-	s.tenantSchema = schema
-	s.mu.Unlock()
+// table qualifies every tenant table independently of pooled session state.
+func (s *PostgresStore) table(name string) string {
+	return pq.QuoteIdentifier(s.TenantSchema()) + "." + pq.QuoteIdentifier(name)
 }
 
 // WithTenantSchema returns a shallow copy of the store scoped to the given tenant.
 // The copy shares the same *sql.DB connection pool but has its own tenantSchema,
 // so concurrent requests for different tenants do not race on shared state.
 func (s *PostgresStore) WithTenantSchema(schema string) *PostgresStore {
-	return &PostgresStore{db: s.db, tenantSchema: schema}
+	return &PostgresStore{db: s.db, tenantSchema: schema, requestCtx: s.requestCtx}
 }
 
 // ProvisionTenant creates the schema and DDL tables for a tenant if they
 // do not already exist. Idempotent -- safe to call multiple times.
 func (s *PostgresStore) ProvisionTenant(tenantID string) error {
-	saved := s.tenantSchema
-	s.mu.Lock()
-	s.tenantSchema = tenantID
-	s.mu.Unlock()
-	err := s.initTenantSchema()
-	s.mu.Lock()
-	s.tenantSchema = saved
-	s.mu.Unlock()
-	return err
-}
-
-func sanitizeTenantID(id string) string {
-	// Only allow alphanumeric and underscores
-	var sb strings.Builder
-	for _, c := range id {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' {
-			sb.WriteRune(c)
-		}
-	}
-	if sb.Len() == 0 {
-		return "default"
-	}
-	return sb.String()
+	return s.WithTenantSchema(tenantID).initTenantSchema()
 }
 
 func (s *PostgresStore) initTenantSchema() error {
+	if err := s.validateTenant(); err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(s.operationContext(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Serialize provisioning of the same tenant across processes and requests.
+	if _, err := tx.ExecContext(s.operationContext(), `SELECT pg_advisory_xact_lock(hashtext($1))`, s.TenantSchema()); err != nil {
+		return err
+	}
+	schema := pq.QuoteIdentifier(s.TenantSchema())
 	statements := []string{
-		fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, s.tenantSchema),
-		fmt.Sprintf(`SET search_path TO %s`, s.tenantSchema),
+		fmt.Sprintf(`CREATE SCHEMA IF NOT EXISTS %s`, schema),
+		fmt.Sprintf(`SET LOCAL search_path TO %s`, schema),
 		`CREATE TABLE IF NOT EXISTS items (
 			id TEXT PRIMARY KEY,
 			module_id TEXT NOT NULL,
@@ -144,7 +133,10 @@ func (s *PostgresStore) initTenantSchema() error {
 			created_at TIMESTAMPTZ NOT NULL,
 			updated_at TIMESTAMPTZ NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS deletion_batches (id TEXT PRIMARY KEY, payload TEXT NOT NULL, titles TEXT NOT NULL, item_count INTEGER NOT NULL, created_at TEXT NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS idx_items_module_id ON items(module_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_module_updated_id ON items(module_id,updated_at DESC,id ASC)`,
+		`CREATE INDEX IF NOT EXISTS idx_items_updated_id ON items(updated_at DESC, id ASC)`,
 		// Migration: add tags column if table existed before tags feature
 		`ALTER TABLE items ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'`,
 		`CREATE INDEX IF NOT EXISTS idx_items_tags ON items USING GIN(tags)`,
@@ -164,7 +156,7 @@ func (s *PostgresStore) initTenantSchema() error {
 	}
 
 	for _, stmt := range statements {
-		if _, err := s.db.Exec(stmt); err != nil {
+		if _, err := tx.ExecContext(s.operationContext(), stmt); err != nil {
 			return fmt.Errorf("executing DDL: %w\nStatement: %s", err, stmt)
 		}
 	}
@@ -188,45 +180,49 @@ func (s *PostgresStore) initTenantSchema() error {
 			NEW.search_vector := to_tsvector('english', coalesce(NEW.title, '') || ' ' || coalesce(attr_text, '') || ' ' || coalesce(tags_text, ''));
 			RETURN NEW;
 		END;
-		$$ LANGUAGE plpgsql`, s.tenantSchema)
-	if _, err := s.db.Exec(triggerFn); err != nil {
+		$$ LANGUAGE plpgsql`, schema)
+	if _, err := tx.ExecContext(s.operationContext(), triggerFn); err != nil {
 		return fmt.Errorf("creating trigger function: %w", err)
 	}
 
 	// Create trigger if not exists (drop and recreate to ensure correctness)
-	dropTrigger := fmt.Sprintf(`DROP TRIGGER IF EXISTS items_search_update ON %s.items`, s.tenantSchema)
-	if _, err := s.db.Exec(dropTrigger); err != nil {
+	dropTrigger := fmt.Sprintf(`DROP TRIGGER IF EXISTS items_search_update ON %s.items`, schema)
+	if _, err := tx.ExecContext(s.operationContext(), dropTrigger); err != nil {
 		return fmt.Errorf("dropping trigger: %w", err)
 	}
 
 	createTrigger := fmt.Sprintf(`CREATE TRIGGER items_search_update
 		BEFORE INSERT OR UPDATE ON %s.items
-		FOR EACH ROW EXECUTE FUNCTION %s.items_search_update()`, s.tenantSchema, s.tenantSchema)
-	if _, err := s.db.Exec(createTrigger); err != nil {
+		FOR EACH ROW EXECUTE FUNCTION %s.items_search_update()`, schema, schema)
+	if _, err := tx.ExecContext(s.operationContext(), createTrigger); err != nil {
 		return fmt.Errorf("creating trigger: %w", err)
 	}
 
-	// Migration: add tags column to existing databases that lack it
-	s.db.Exec(fmt.Sprintf(`ALTER TABLE %s.items ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'`, s.tenantSchema))
-	s.db.Exec(fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_items_tags ON %s.items USING GIN(tags)`, s.tenantSchema))
-
-	return nil
+	return tx.Commit()
 }
 
-// setSearchPath sets the search path on a pooled connection.
-// Deprecated: only used internally as fallback. Prefer tenantQuery/tenantExec.
-func (s *PostgresStore) setSearchPath() error {
-	s.mu.RLock()
-	schema := s.tenantSchema
-	s.mu.RUnlock()
-	_, err := s.db.Exec(fmt.Sprintf("SET search_path TO %s", schema))
-	return err
+var tenantSchemaPattern = regexp.MustCompile(`^tenant_[a-z0-9_]{1,56}$`)
+
+// validateTenant rejects identifiers PostgreSQL would truncate or treat as public.
+func (s *PostgresStore) validateTenant() error {
+	schema := s.TenantSchema()
+	if !tenantSchemaPattern.MatchString(schema) {
+		return fmt.Errorf("invalid tenant schema")
+	}
+	return nil
 }
 
 // QueryItems retrieves items with optional tsvector search, module filter,
 // JSONB attribute filters, and tag filters.
 func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON string, tagsJSON string) ([]Item, error) {
-	if err := s.setSearchPath(); err != nil {
+	return readLegacyItems(s.queryItems, query, moduleID, filtersJSON, tagsJSON)
+}
+
+func (s *PostgresStore) queryItems(query string, moduleID string, filtersJSON string, tagsJSON string, limit, offset int) ([]Item, error) {
+	if err := ValidateQuery(query, moduleID, filtersJSON, tagsJSON); err != nil {
+		return nil, err
+	}
+	if err := s.validateTenant(); err != nil {
 		return nil, err
 	}
 
@@ -239,7 +235,7 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 
 	if query != "" {
 		baseSQL := `SELECT i.id, i.module_id, i.title, i.purchase_price, i.images, i.tags, i.attributes, i.created_at, i.updated_at
-			FROM items i, plainto_tsquery('english', $1) q
+			FROM ` + s.table("items") + ` i, plainto_tsquery('english', $1) q
 			WHERE i.search_vector @@ q`
 		queryArgs := []any{query}
 		paramIdx := 2
@@ -262,12 +258,13 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 			queryArgs = append(queryArgs, tagArgs...)
 		}
 
-		baseSQL += " ORDER BY ts_rank(i.search_vector, q) DESC"
+		baseSQL += " ORDER BY ts_rank(i.search_vector, q) DESC, i.id ASC"
+		baseSQL, queryArgs = appendItemPage(baseSQL, queryArgs, limit, offset, true)
 
-		rows, err = s.db.Query(baseSQL, queryArgs...)
+		rows, err = s.db.QueryContext(s.operationContext(), baseSQL, queryArgs...)
 	} else {
 		baseSQL := `SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at
-			FROM items`
+			FROM ` + s.table("items") + ``
 		var queryArgs []any
 		var whereParts []string
 		paramIdx := 1
@@ -291,9 +288,10 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 		if len(whereParts) > 0 {
 			baseSQL += " WHERE " + strings.Join(whereParts, " AND ")
 		}
-		baseSQL += " ORDER BY updated_at DESC"
+		baseSQL += " ORDER BY updated_at DESC, id ASC"
+		baseSQL, queryArgs = appendItemPage(baseSQL, queryArgs, limit, offset, true)
 
-		rows, err = s.db.Query(baseSQL, queryArgs...)
+		rows, err = s.db.QueryContext(s.operationContext(), baseSQL, queryArgs...)
 	}
 
 	if err != nil {
@@ -306,12 +304,12 @@ func (s *PostgresStore) QueryItems(query string, moduleID string, filtersJSON st
 
 // InsertItem creates a new item with a generated UUID.
 func (s *PostgresStore) InsertItem(item Item) (Item, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return Item{}, err
 	}
 
 	item.ID = uuid.New().String()
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
 	item.CreatedAt = now
 	item.UpdatedAt = now
 
@@ -332,8 +330,8 @@ func (s *PostgresStore) InsertItem(item Item) (Item, error) {
 		return Item{}, fmt.Errorf("marshaling attributes: %w", err)
 	}
 
-	_, err = s.db.Exec(
-		`INSERT INTO items (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
+	_, err = s.db.ExecContext(s.operationContext(),
+		`INSERT INTO `+s.table("items")+` (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		item.ID, item.ModuleID, item.Title, item.PurchasePrice,
 		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.CreatedAt, item.UpdatedAt,
@@ -347,11 +345,11 @@ func (s *PostgresStore) InsertItem(item Item) (Item, error) {
 
 // UpdateItem updates an existing item.
 func (s *PostgresStore) UpdateItem(item Item) (Item, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return Item{}, err
 	}
 
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	item.UpdatedAt = time.Now().UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
 
 	item.Tags = normalizeTags(item.Tags)
 
@@ -370,8 +368,8 @@ func (s *PostgresStore) UpdateItem(item Item) (Item, error) {
 		return Item{}, fmt.Errorf("marshaling attributes: %w", err)
 	}
 
-	result, err := s.db.Exec(
-		`UPDATE items SET module_id=$1, title=$2, purchase_price=$3, images=$4, tags=$5, attributes=$6, updated_at=$7
+	result, err := s.db.ExecContext(s.operationContext(),
+		`UPDATE `+s.table("items")+` SET module_id=$1, title=$2, purchase_price=$3, images=$4, tags=$5, attributes=$6, updated_at=$7
 		 WHERE id=$8`,
 		item.ModuleID, item.Title, item.PurchasePrice,
 		string(imagesJSON), string(tagsJSON), string(attrsJSON), item.UpdatedAt, item.ID,
@@ -390,11 +388,14 @@ func (s *PostgresStore) UpdateItem(item Item) (Item, error) {
 
 // DeleteItem removes an item by ID.
 func (s *PostgresStore) DeleteItem(id string) error {
-	if err := s.setSearchPath(); err != nil {
+	if err := validateIDs([]string{id}); err != nil {
+		return err
+	}
+	if err := s.validateTenant(); err != nil {
 		return err
 	}
 
-	result, err := s.db.Exec(`DELETE FROM items WHERE id = $1`, id)
+	result, err := s.db.ExecContext(s.operationContext(), `DELETE FROM `+s.table("items")+` WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("deleting item: %w", err)
 	}
@@ -407,14 +408,17 @@ func (s *PostgresStore) DeleteItem(id string) error {
 
 // DeleteItems removes multiple items in a transaction.
 func (s *PostgresStore) DeleteItems(ids []string) (int64, error) {
+	if err := validateIDs(ids); err != nil {
+		return 0, err
+	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return 0, err
 	}
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(s.operationContext(), nil)
 	if err != nil {
 		return 0, fmt.Errorf("beginning transaction: %w", err)
 	}
@@ -427,8 +431,8 @@ func (s *PostgresStore) DeleteItems(ids []string) (int64, error) {
 		args[i] = id
 	}
 
-	result, err := tx.Exec(
-		"DELETE FROM items WHERE id IN ("+strings.Join(placeholders, ",")+")",
+	result, err := tx.ExecContext(s.operationContext(),
+		"DELETE FROM "+s.table("items")+" WHERE id IN ("+strings.Join(placeholders, ",")+")",
 		args...,
 	)
 	if err != nil {
@@ -445,20 +449,26 @@ func (s *PostgresStore) DeleteItems(ids []string) (int64, error) {
 
 // BulkUpdateModule changes the module_id of multiple items.
 func (s *PostgresStore) BulkUpdateModule(ids []string, newModuleID string) (int64, error) {
+	if err := validateIDs(ids); err != nil {
+		return 0, err
+	}
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return 0, err
 	}
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(s.operationContext(), nil)
 	if err != nil {
 		return 0, fmt.Errorf("beginning transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	if err := validateReassignment(s.operationContext(), tx, s.table, true, ids, newModuleID); err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
 	placeholders := make([]string, len(ids))
 	args := []any{newModuleID, now}
 	for i, id := range ids {
@@ -466,8 +476,8 @@ func (s *PostgresStore) BulkUpdateModule(ids []string, newModuleID string) (int6
 		args = append(args, id)
 	}
 
-	result, err := tx.Exec(
-		"UPDATE items SET module_id = $1, updated_at = $2 WHERE id IN ("+strings.Join(placeholders, ",")+")",
+	result, err := tx.ExecContext(s.operationContext(),
+		"UPDATE "+s.table("items")+" SET module_id = $1, updated_at = $2 WHERE id IN ("+strings.Join(placeholders, ",")+")",
 		args...,
 	)
 	if err != nil {
@@ -484,115 +494,37 @@ func (s *PostgresStore) BulkUpdateModule(ids []string, newModuleID string) (int6
 
 // ExportItemsCSV queries items by ID and generates CSV.
 func (s *PostgresStore) ExportItemsCSV(ids []string, modules []ModuleSchema) (string, error) {
-	if len(ids) == 0 {
-		return "", nil
-	}
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return "", err
 	}
-
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = fmt.Sprintf("$%d", i+1)
-		args[i] = id
-	}
-
-	rows, err := s.db.Query(
-		"SELECT id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at FROM items WHERE id IN ("+strings.Join(placeholders, ",")+") ORDER BY updated_at DESC",
-		args...,
-	)
-	if err != nil {
-		return "", fmt.Errorf("querying items for CSV: %w", err)
-	}
-	defer rows.Close()
-
-	items, err := scanPgItems(rows)
-	if err != nil {
-		return "", err
-	}
-
-	return buildCSV(items, modules), nil
+	return exportItemsCSV(s.operationContext(), s.db, s.table("items"), true, ids, modules)
 }
 
 // GetModules returns all module schemas from the modules table.
 func (s *PostgresStore) GetModules() ([]ModuleSchema, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return nil, err
 	}
 
-	rows, err := s.db.Query(`SELECT id, display_name, description, schema_json FROM modules ORDER BY display_name`)
-	if err != nil {
-		return nil, fmt.Errorf("querying modules: %w", err)
-	}
-	defer rows.Close()
-
-	var modules []ModuleSchema
-	for rows.Next() {
-		var id, displayName string
-		var description sql.NullString
-		var schemaJSON string
-
-		if err := rows.Scan(&id, &displayName, &description, &schemaJSON); err != nil {
-			return nil, fmt.Errorf("scanning module: %w", err)
-		}
-
-		var schema ModuleSchema
-		if err := json.Unmarshal([]byte(schemaJSON), &schema); err != nil {
-			// Fallback: use the row data directly
-			schema = ModuleSchema{
-				ID:          id,
-				DisplayName: displayName,
-				Description: description.String,
-			}
-		}
-		// Ensure ID/DisplayName/Description match the row
-		schema.ID = id
-		schema.DisplayName = displayName
-		schema.Description = description.String
-
-		modules = append(modules, schema)
-	}
-
-	if modules == nil {
-		modules = []ModuleSchema{}
-	}
-
-	return modules, rows.Err()
+	return readModules(s.operationContext(), s.db, s.table("modules"), true)
 }
 
 // SaveModule upserts a module schema into the modules table.
 func (s *PostgresStore) SaveModule(schema ModuleSchema) error {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return err
 	}
-
-	schemaJSON, err := json.Marshal(schema)
-	if err != nil {
-		return fmt.Errorf("marshaling schema: %w", err)
-	}
-
-	_, err = s.db.Exec(
-		`INSERT INTO modules (id, display_name, description, schema_json, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, NOW(), NOW())
-		 ON CONFLICT (id) DO UPDATE SET display_name=$2, description=$3, schema_json=$4, updated_at=NOW()`,
-		schema.ID, schema.DisplayName, schema.Description, string(schemaJSON),
-	)
-	if err != nil {
-		return fmt.Errorf("saving module: %w", err)
-	}
-
-	return nil
+	return saveModule(s.operationContext(), s.db, s.table, true, schema)
 }
 
 // LoadModuleFile returns the schema JSON for a given module ID.
 func (s *PostgresStore) LoadModuleFile(id string) (string, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return "", err
 	}
 
 	var schemaJSON string
-	err := s.db.QueryRow(`SELECT schema_json FROM modules WHERE id = $1`, id).Scan(&schemaJSON)
+	err := s.db.QueryRowContext(s.operationContext(), `SELECT schema_json FROM `+s.table("modules")+` WHERE id = $1`, id).Scan(&schemaJSON)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("module not found: %s", id)
 	}
@@ -605,11 +537,11 @@ func (s *PostgresStore) LoadModuleFile(id string) (string, error) {
 
 // GetSettings returns the combined settings JSON from the settings table.
 func (s *PostgresStore) GetSettings() (string, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return "{}", err
 	}
 
-	rows, err := s.db.Query(`SELECT key, value FROM settings`)
+	rows, err := s.db.QueryContext(s.operationContext(), `SELECT key, value FROM `+s.table("settings")+``)
 	if err != nil {
 		return "{}", fmt.Errorf("querying settings: %w", err)
 	}
@@ -622,7 +554,20 @@ func (s *PostgresStore) GetSettings() (string, error) {
 		if err := rows.Scan(&key, &value); err != nil {
 			return "{}", fmt.Errorf("scanning setting: %w", err)
 		}
-		result[key] = json.RawMessage(value)
+		if key == "settings" {
+			object, err := settingsObject(value)
+			if err != nil {
+				return "{}", err
+			}
+			for name, setting := range object {
+				result[name] = setting
+			}
+		} else {
+			result[key] = json.RawMessage(value)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "{}", err
 	}
 
 	if len(result) == 0 {
@@ -640,24 +585,29 @@ func (s *PostgresStore) GetSettings() (string, error) {
 // SaveSettings writes settings JSON to the settings table.
 // The JSON is stored as a single row with key "settings".
 func (s *PostgresStore) SaveSettings(settingsJSON string) error {
-	var check json.RawMessage
-	if err := json.Unmarshal([]byte(settingsJSON), &check); err != nil {
-		return fmt.Errorf("invalid JSON: %w", err)
-	}
-
-	if err := s.setSearchPath(); err != nil {
+	if _, err := settingsObject(settingsJSON); err != nil {
 		return err
 	}
 
-	_, err := s.db.Exec(
-		`INSERT INTO settings (key, value) VALUES ('settings', $1)
-		 ON CONFLICT (key) DO UPDATE SET value = $1`,
+	if err := s.validateTenant(); err != nil {
+		return err
+	}
+
+	result, err := s.db.ExecContext(s.operationContext(),
+		`INSERT INTO `+s.table("settings")+` AS existing (key, value)
+         SELECT 'settings', $1::jsonb WHERE octet_length(($1::jsonb)::text)<=1048576
+		 ON CONFLICT (key) DO UPDATE SET value = existing.value || EXCLUDED.value
+         WHERE octet_length((existing.value || EXCLUDED.value)::text)<=1048576`,
 		settingsJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("saving settings: %w", err)
 	}
-
+	if count, err := result.RowsAffected(); err != nil {
+		return err
+	} else if count == 0 {
+		return fmt.Errorf("merged settings exceed 1 MB limit")
+	}
 	return nil
 }
 
@@ -688,7 +638,7 @@ func initPublicShowcasesTable(db *sql.DB) error {
 // GetShowcaseBySlug looks up a showcase by its URL slug across all tenants.
 func (s *PostgresStore) GetShowcaseBySlug(slug string) (*Showcase, error) {
 	var sc Showcase
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(s.operationContext(),
 		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE slug = $1`,
 		slug,
 	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt)
@@ -704,9 +654,9 @@ func (s *PostgresStore) GetShowcaseBySlug(slug string) (*Showcase, error) {
 // GetShowcaseForModule returns the showcase for a module within the current tenant.
 func (s *PostgresStore) GetShowcaseForModule(moduleID string) (*Showcase, error) {
 	var sc Showcase
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(s.operationContext(),
 		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE tenant_id = $1 AND module_id = $2`,
-		s.tenantSchema, moduleID,
+		s.TenantSchema(), moduleID,
 	).Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -719,7 +669,7 @@ func (s *PostgresStore) GetShowcaseForModule(moduleID string) (*Showcase, error)
 
 // UpsertShowcase creates or updates a showcase record. Slug is never overwritten on update.
 func (s *PostgresStore) UpsertShowcase(showcase Showcase) error {
-	_, err := s.db.Exec(
+	_, err := s.db.ExecContext(s.operationContext(),
 		`INSERT INTO public.showcases (id, slug, tenant_id, module_id, enabled, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT(tenant_id, module_id) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
@@ -733,9 +683,9 @@ func (s *PostgresStore) UpsertShowcase(showcase Showcase) error {
 
 // ListShowcases returns all showcases for the current tenant.
 func (s *PostgresStore) ListShowcases() ([]Showcase, error) {
-	rows, err := s.db.Query(
-		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE tenant_id = $1 ORDER BY created_at DESC`,
-		s.tenantSchema,
+	rows, err := s.db.QueryContext(s.operationContext(),
+		`SELECT id, slug, tenant_id, module_id, enabled, created_at, updated_at FROM public.showcases WHERE tenant_id = $1 ORDER BY created_at DESC,id LIMIT $2`,
+		s.TenantSchema(), MaxShowcaseResults+1,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying showcases: %w", err)
@@ -748,6 +698,9 @@ func (s *PostgresStore) ListShowcases() ([]Showcase, error) {
 		if err := rows.Scan(&sc.ID, &sc.Slug, &sc.TenantID, &sc.ModuleID, &sc.Enabled, &sc.CreatedAt, &sc.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scanning showcase: %w", err)
 		}
+		if len(showcases) >= MaxShowcaseResults {
+			return nil, ErrMetadataBudget
+		}
 		showcases = append(showcases, sc)
 	}
 	if showcases == nil {
@@ -758,17 +711,20 @@ func (s *PostgresStore) ListShowcases() ([]Showcase, error) {
 
 // Close closes the database connection.
 func (s *PostgresStore) Close() error {
+	if s.requestCtx != nil {
+		return nil
+	} // Borrowed request handles do not own the pool.
 	return s.db.Close()
 }
 
 // GetAllTags returns all distinct tags with item counts.
 func (s *PostgresStore) GetAllTags() ([]TagCount, error) {
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return nil, err
 	}
 
-	rows, err := s.db.Query(
-		`SELECT tag, COUNT(*) FROM items, jsonb_array_elements_text(tags) AS tag GROUP BY tag ORDER BY tag`,
+	rows, err := s.db.QueryContext(s.operationContext(),
+		`SELECT tag, COUNT(*) FROM `+s.table("items")+`, jsonb_array_elements_text(tags) AS tag GROUP BY tag ORDER BY tag LIMIT 10001`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("querying tags: %w", err)
@@ -780,6 +736,9 @@ func (s *PostgresStore) GetAllTags() ([]TagCount, error) {
 		var tc TagCount
 		if err := rows.Scan(&tc.Name, &tc.Count); err != nil {
 			return nil, fmt.Errorf("scanning tag: %w", err)
+		}
+		if len(tags) >= MaxTagResults {
+			return nil, ErrMetadataBudget
 		}
 		tags = append(tags, tc)
 	}
@@ -795,16 +754,20 @@ func (s *PostgresStore) RenameTag(oldName, newName string) (int64, error) {
 	if newName == "" {
 		return 0, fmt.Errorf("new tag name cannot be empty")
 	}
-	if len(newName) > 50 {
-		newName = newName[:50]
+	if len(newName) > 50 || strings.TrimSpace(oldName) == "" || len(oldName) > 50 {
+		return 0, fmt.Errorf("tag names must contain 1-50 bytes")
 	}
 
-	if err := s.setSearchPath(); err != nil {
+	if err := s.validateTenant(); err != nil {
 		return 0, err
 	}
 
-	result, err := s.db.Exec(
-		`UPDATE items SET tags = (tags - $1) || to_jsonb($2::text) WHERE tags ? $1`,
+	result, err := s.db.ExecContext(s.operationContext(),
+		`UPDATE `+s.table("items")+` SET tags = (
+ SELECT COALESCE(jsonb_agg(tag ORDER BY position),'[]'::jsonb) FROM (
+ SELECT CASE WHEN value=$1 THEN $2 ELSE value END AS tag,MIN(ordinal) AS position
+ FROM jsonb_array_elements_text(tags) WITH ORDINALITY AS source(value,ordinal)
+ GROUP BY 1) AS renamed), updated_at=GREATEST(clock_timestamp(),updated_at+interval '1 microsecond') WHERE tags ? $1`,
 		oldName, newName,
 	)
 	if err != nil {
@@ -817,12 +780,15 @@ func (s *PostgresStore) RenameTag(oldName, newName string) (int64, error) {
 
 // DeleteTag removes a tag from all items using JSONB operators.
 func (s *PostgresStore) DeleteTag(name string) (int64, error) {
-	if err := s.setSearchPath(); err != nil {
+	if strings.TrimSpace(name) == "" || len(name) > 50 {
+		return 0, fmt.Errorf("tag names must contain 1-50 bytes")
+	}
+	if err := s.validateTenant(); err != nil {
 		return 0, err
 	}
 
-	result, err := s.db.Exec(
-		`UPDATE items SET tags = tags - $1 WHERE tags ? $1`,
+	result, err := s.db.ExecContext(s.operationContext(),
+		`UPDATE `+s.table("items")+` SET tags = tags - $1, updated_at=GREATEST(clock_timestamp(),updated_at+interval '1 microsecond') WHERE tags ? $1`,
 		name,
 	)
 	if err != nil {
@@ -873,10 +839,16 @@ func buildPgFilterClauses(filters []attrFilter, tableAlias string, paramIdx *int
 		if field == "purchasePrice" {
 			return prefix + "purchase_price"
 		}
-		return fmt.Sprintf("%sattributes->>'%s'", prefix, field)
+		expr := fmt.Sprintf("%sattributes->>$%d", prefix, *paramIdx)
+		args = append(args, field)
+		*paramIdx++
+		return expr
 	}
 
 	for _, f := range filters {
+		if f.Op == "in" && len(f.Values) == 0 {
+			continue
+		}
 		expr := col(f.Field)
 		switch f.Op {
 		case "in":
@@ -929,8 +901,8 @@ func scanPgItems(rows *sql.Rows) ([]Item, error) {
 			return nil, fmt.Errorf("scanning item row: %w", err)
 		}
 
-		item.CreatedAt = createdAt.Format(time.RFC3339)
-		item.UpdatedAt = updatedAt.Format(time.RFC3339)
+		item.CreatedAt = createdAt.Format(time.RFC3339Nano)
+		item.UpdatedAt = updatedAt.Format(time.RFC3339Nano)
 
 		if err := json.Unmarshal([]byte(imagesJSON), &item.Images); err != nil {
 			item.Images = []string{}

@@ -57,6 +57,8 @@ const emit = defineEmits<{
 .bar-actions {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 .bar-btn {
   padding: 6px 14px;
@@ -90,6 +92,10 @@ const emit = defineEmits<{
 .bar-btn-muted:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+@media (max-width: 767px) {
+  .bulk-bar { width: calc(100% - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; bottom: 16px; padding: 12px; gap: 8px; flex-direction: column; box-sizing: border-box; }
 }
 
 /* Slide-up animation */

@@ -1,3 +1,6 @@
+<script lang="ts">
+let nextControlID = 0
+</script>
 <script lang="ts" setup>
 import {computed} from 'vue'
 import type {AttributeSchema} from '../api/types'
@@ -7,12 +10,16 @@ const props = defineProps<{
   attribute: AttributeSchema
   modelValue: any
   errorMessage?: string
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: any]
 }>()
 
+const controlID = `attribute-control-${++nextControlID}`
+const labelID = `${controlID}-label`
+const errorID = `${controlID}-error`
 const label = computed(() => props.attribute.display?.label || props.attribute.name)
 const placeholder = computed(() => props.attribute.display?.placeholder || '')
 const widget = computed(() => props.attribute.display?.widget || '')
@@ -33,6 +40,7 @@ const inputType = computed(() => {
 })
 
 function onInput(event: Event) {
+  if (props.disabled) return
   const target = event.target as HTMLInputElement
   if (inputType.value === 'checkbox') {
     emit('update:modelValue', target.checked)
@@ -46,7 +54,7 @@ function onInput(event: Event) {
 
 <template>
   <div class="form-field" :class="{'has-error': errorMessage}">
-    <label v-if="inputType !== 'checkbox'" class="field-label">
+    <label v-if="inputType !== 'checkbox'" :id="labelID" :for="inputType === 'textarea' ? undefined : controlID" class="field-label">
       {{ label }}
       <span v-if="attribute.required" class="required">*</span>
     </label>
@@ -54,11 +62,15 @@ function onInput(event: Event) {
     <MarkdownEditor
       v-if="inputType === 'textarea'"
       :modelValue="modelValue ?? ''"
+      :disabled="disabled" :labelledBy="labelID" :describedBy="errorMessage ? errorID : undefined"
+      :invalid="!!errorMessage" :required="attribute.required"
       @update:modelValue="val => emit('update:modelValue', val)"
     />
 
     <select
       v-else-if="inputType === 'select'"
+      :id="controlID" :disabled="disabled" :aria-required="attribute.required || undefined"
+      :aria-invalid="!!errorMessage" :aria-describedby="errorMessage ? errorID : undefined"
       :value="modelValue ?? ''"
       @change="onInput"
       class="field-input"
@@ -70,6 +82,8 @@ function onInput(event: Event) {
     <label v-else-if="inputType === 'checkbox'" class="checkbox-label">
       <input
         type="checkbox"
+        :id="controlID" :disabled="disabled"
+        :aria-invalid="!!errorMessage" :aria-describedby="errorMessage ? errorID : undefined"
         :checked="!!modelValue"
         @change="onInput"
       />
@@ -80,13 +94,15 @@ function onInput(event: Event) {
     <input
       v-else
       :type="inputType"
+      :id="controlID" :disabled="disabled" :aria-required="attribute.required || undefined"
+      :aria-invalid="!!errorMessage" :aria-describedby="errorMessage ? errorID : undefined"
       :value="modelValue ?? ''"
       :placeholder="placeholder"
       @input="onInput"
       class="field-input"
     />
 
-    <div v-if="errorMessage" class="field-error">{{ errorMessage }}</div>
+    <div v-if="errorMessage" :id="errorID" role="alert" class="field-error">{{ errorMessage }}</div>
   </div>
 </template>
 

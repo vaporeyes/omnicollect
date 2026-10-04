@@ -3,13 +3,16 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -27,13 +30,35 @@ func MigrateToPostgres(sqlitePath string, pgStore *PostgresStore, modulesDir str
 	result := MigrationResult{}
 
 	// Open source SQLite database
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)", sqlitePath)
+	location := url.URL{Scheme: "file", Path: sqlitePath}
+	dsn := location.String() + "?mode=ro"
 	srcDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return result, fmt.Errorf("opening source SQLite: %w", err)
 	}
 	defer srcDB.Close()
 
+	// Current databases keep all metadata in SQLite; migrate a single consistent
+	// snapshot atomically rather than consulting unrelated user directories.
+	var metadataTables int
+	if err := srcDB.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('modules','settings')`).Scan(&metadataTables); err != nil {
+		return result, err
+	}
+	if metadataTables == 2 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		snapshot, err := readSnapshot(ctx, srcDB, false, func(name string) string { return name })
+		if err != nil {
+			return result, err
+		}
+		restored, err := pgStore.Restore(ctx, snapshot, "merge")
+		if err != nil {
+			return result, err
+		}
+		return MigrationResult{ItemsMigrated: restored.Items, ModulesMigrated: restored.Modules}, nil
+	}
+
+	// Legacy databases stored metadata beside the database or in a module directory.
 	// Migrate items
 	itemCount, errs := migrateItems(srcDB, pgStore)
 	result.ItemsMigrated = itemCount
@@ -85,7 +110,7 @@ func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
 		}
 
 		// Insert directly into PG with existing ID and timestamps
-		if err := pgStore.setSearchPath(); err != nil {
+		if err := pgStore.validateTenant(); err != nil {
 			errors = append(errors, fmt.Sprintf("setting search path: %v", err))
 			continue
 		}
@@ -95,7 +120,7 @@ func migrateItems(srcDB *sql.DB, pgStore *PostgresStore) (int, []string) {
 		attrJSON, _ := json.Marshal(item.Attributes)
 
 		_, err = pgStore.db.Exec(
-			`INSERT INTO items (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
+			`INSERT INTO `+pgStore.table("items")+` (id, module_id, title, purchase_price, images, tags, attributes, created_at, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			 ON CONFLICT (id) DO NOTHING`,
 			item.ID, item.ModuleID, item.Title, item.PurchasePrice,
@@ -162,14 +187,9 @@ func migrateModules(pgStore *PostgresStore, modulesDir string) (int, []string) {
 }
 
 func migrateSettings(sqlitePath string, pgStore *PostgresStore) error {
-	// Settings are stored in a JSON file, not in SQLite.
-	// Try to read the settings file from the config directory.
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return nil // No settings to migrate
-	}
-
-	settingsPath := filepath.Join(configDir, "OmniCollect", "settings.json")
+	// Legacy settings belong beside the selected source DB, never an unrelated
+	// installation in the process user's config directory.
+	settingsPath := filepath.Join(filepath.Dir(sqlitePath), "settings.json")
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		return nil // No settings file

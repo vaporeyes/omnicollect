@@ -40,6 +40,9 @@ func (a *App) Init() {
 // InitWithConfig initializes with an explicit config. Instantiates the
 // appropriate Store and MediaStore based on cloud vs local settings.
 func (a *App) InitWithConfig(cfg Config) {
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
 	a.config = cfg
 
 	// Initialize database store
@@ -115,38 +118,17 @@ func (a *App) InitWithConfig(cfg Config) {
 // startup is called by Wails when the application starts.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.Init()
 }
 
 // SaveItem creates or updates a collection item.
 // If item.ID is empty, a new item is created with a generated UUID.
 // If item.ID exists in the database, the item is updated.
 func (a *App) SaveItem(item Item) (Item, error) {
-	if item.ModuleID == "" {
-		return Item{}, fmt.Errorf("module_id is required")
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if item.Title == "" {
-		return Item{}, fmt.Errorf("title is required")
-	}
-
-	if item.Images == nil {
-		item.Images = []string{}
-	}
-	if item.Tags == nil {
-		item.Tags = []string{}
-	}
-	if item.Attributes == nil {
-		item.Attributes = map[string]any{}
-	}
-
-	si := toStorageItem(item)
-	var result storage.Item
-	var err error
-	if item.ID == "" {
-		result, err = a.store.InsertItem(si)
-	} else {
-		result, err = a.store.UpdateItem(si)
-	}
+	result, err := a.store.SaveItem(ctx, toStorageItem(item))
 	if err != nil {
 		return Item{}, err
 	}
@@ -265,27 +247,15 @@ func (a *App) ProcessImage(sourcePath string) (ProcessImageResult, error) {
 		return ProcessImageResult{}, fmt.Errorf("source path is required")
 	}
 
-	data, err := processImageToBytes(sourcePath)
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	data, err := processImageFile(ctx, sourcePath)
 	if err != nil {
 		return ProcessImageResult{}, err
 	}
-
-	// Persist via MediaStore
-	if err := a.mediaStore.SaveOriginal(data.OriginalFile, data.OriginalBytes); err != nil {
-		return ProcessImageResult{}, fmt.Errorf("saving original: %w", err)
-	}
-	if err := a.mediaStore.SaveThumbnail(data.ThumbFile, data.ThumbBytes); err != nil {
-		return ProcessImageResult{}, fmt.Errorf("saving thumbnail: %w", err)
-	}
-
-	return ProcessImageResult{
-		Filename:      data.Filename,
-		OriginalPath:  data.OriginalFile,
-		ThumbnailPath: data.ThumbFile,
-		Width:         data.Width,
-		Height:        data.Height,
-		Format:        data.Format,
-	}, nil
+	return persistProcessedImage(ctx, a.mediaStore, data)
 }
 
 // SaveCustomModule validates and saves a module schema.
@@ -346,13 +316,7 @@ func (a *App) ExportBackup() (string, error) {
 		return "", nil // user cancelled
 	}
 
-	// Backup only works with SQLiteStore (local mode)
-	sqliteStore, ok := a.store.(*storage.SQLiteStore)
-	if !ok {
-		return "", fmt.Errorf("backup export is only available in local mode")
-	}
-
-	if err := createBackupArchive(path, sqliteStore.DB()); err != nil {
+	if err := createBackupArchive(a.ctx, path, a.store, a.mediaStore); err != nil {
 		return "", fmt.Errorf("creating backup: %w", err)
 	}
 

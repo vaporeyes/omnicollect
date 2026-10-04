@@ -1,9 +1,11 @@
 <!-- ABOUTME: Spotlight-style command palette overlay for global search and quick actions. -->
 <!-- ABOUTME: Triggered by Cmd/Ctrl+K, searches items across all modules with keyboard navigation. -->
 <script lang="ts" setup>
+import MediaImage from './MediaImage.vue'
+import ModalSurface from './ModalSurface.vue'
 import {ref, computed, watch, nextTick, onMounted, onUnmounted} from 'vue'
 import type {Item} from '../api/types'
-import {useCollectionStore} from '../stores/collectionStore'
+import {useCollectionStore, PALETTE_RESULT_LIMIT} from '../stores/collectionStore'
 import {useModuleStore} from '../stores/moduleStore'
 
 const props = defineProps<{
@@ -25,6 +27,20 @@ const highlightedIndex = ref(0)
 const inputEl = ref<HTMLInputElement | null>(null)
 const resultsEl = ref<HTMLElement | null>(null)
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let request: AbortController | null = null
+let generation = 0
+let opener: HTMLElement | null = null
+const loading = ref(false)
+const error = ref('')
+function cancelSearch() {
+  generation++
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = null
+  request?.abort()
+  request = null
+  loading.value = false
+}
+onUnmounted(cancelSearch)
 
 // Quick actions with keyword triggers
 const quickActions = [
@@ -63,31 +79,44 @@ const combinedResults = computed(() => {
 
 const totalCount = computed(() => combinedResults.value.length)
 
-// Reset state when palette opens/closes
-watch(() => props.visible, (vis) => {
-  if (vis) {
+// Invalidate immediately on edit/close, even if fetch ignores cancellation.
+watch(() => props.visible, visible => {
+  cancelSearch()
+  results.value = []
+  error.value = ''
+  if (visible) {
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     query.value = ''
-    results.value = []
     highlightedIndex.value = 0
-    nextTick(() => inputEl.value?.focus())
+    nextTick(() => { if (props.visible) inputEl.value?.focus() })
+  } else {
+    nextTick(() => { if (opener?.isConnected) opener.focus() })
   }
-})
+}, {immediate: true})
 
-// Debounced search
-watch(query, (q) => {
-  if (debounceTimer) clearTimeout(debounceTimer)
+watch(query, q => {
+  cancelSearch()
+  results.value = []
+  highlightedIndex.value = 0
+  error.value = ''
   const trimmed = q.trim()
-  if (!trimmed) {
-    results.value = []
-    highlightedIndex.value = 0
-    return
-  }
+  if (!trimmed || !props.visible) return
+  loading.value = true
+  const current = generation
   debounceTimer = setTimeout(async () => {
-    const all = await collectionStore.searchAllItems(trimmed)
-    results.value = all.slice(0, 25)
-    highlightedIndex.value = 0
+    debounceTimer = null
+    const controller = new AbortController()
+    request = controller
+    try {
+      const all = await collectionStore.searchAllItems(trimmed, controller.signal)
+      if (current === generation && props.visible) results.value = all.slice(0, PALETTE_RESULT_LIMIT)
+    } catch (failure: any) {
+      if (current === generation && !controller.signal.aborted) error.value = failure?.message ?? 'Search failed'
+    } finally {
+      if (current === generation) loading.value = false
+    }
   }, 200)
-})
+}, {flush: 'sync'})
 
 function moduleName(moduleId: string): string {
   return moduleStore.getModuleById(moduleId)?.displayName ?? moduleId
@@ -110,6 +139,8 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault()
     selectHighlighted()
   } else if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
     emit('close')
   }
 }
@@ -144,7 +175,7 @@ function onBackdropClick() {
 <template>
   <Teleport to="body">
     <Transition name="palette">
-      <div v-if="visible" class="palette-overlay" @mousedown.self="onBackdropClick">
+      <ModalSurface v-if="visible" label="Search and commands" class="palette-overlay" @close="emit('close')" @mousedown.self="onBackdropClick">
         <div class="palette-dialog" @keydown="onKeydown">
           <div class="palette-input-wrap">
             <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -155,6 +186,12 @@ function onBackdropClick() {
               v-model="query"
               type="text"
               class="palette-input"
+              role="combobox"
+              aria-label="Search items and commands"
+              aria-controls="palette-results"
+              aria-autocomplete="list"
+              :aria-expanded="totalCount > 0"
+              :aria-activedescendant="totalCount ? `palette-option-${highlightedIndex}` : undefined"
               placeholder="Search items, commands, or jump to..."
               spellcheck="false"
               autocomplete="off"
@@ -164,10 +201,13 @@ function onBackdropClick() {
 
           <div ref="resultsEl" class="palette-results" v-if="query.trim() || matchedActions.length > 0">
             <!-- Unified List -->
-            <ul class="results-list" role="listbox">
+            <ul id="palette-results" class="results-list" role="listbox" aria-label="Search results">
               <li
                 v-for="(result, index) in combinedResults"
                 :key="result.type + '-' + result.id"
+                :id="`palette-option-${index}`"
+                role="option"
+                :aria-selected="highlightedIndex === index"
                 :class="[
                   'result-row',
                   { 'highlighted': highlightedIndex === index }
@@ -176,7 +216,7 @@ function onBackdropClick() {
                 @mouseenter="highlightedIndex = index"
               >
                 <!-- Icon/Thumbnail -->
-                <img
+                <MediaImage
                   v-if="result.type === 'item' && result.thumbnail"
                   :src="'/thumbnails/' + encodeURIComponent(result.thumbnail)"
                   class="result-thumb"
@@ -206,13 +246,16 @@ function onBackdropClick() {
               </li>
             </ul>
 
+            <p class="no-results">Showing up to {{ PALETTE_RESULT_LIMIT }} matching items across collections. Use collection search to browse all matches.</p>
             <!-- No results -->
-            <div v-if="combinedResults.length === 0" class="no-results">
+            <p v-if="loading" role="status" class="no-results">Searching…</p>
+            <p v-else-if="error" role="alert" class="no-results">{{ error }}</p>
+            <div v-else-if="combinedResults.length === 0" class="no-results">
               No results for "{{ query.trim() }}"
             </div>
           </div>
         </div>
-      </div>
+      </ModalSurface>
     </Transition>
   </Teleport>
 </template>

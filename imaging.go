@@ -1,24 +1,24 @@
-// ABOUTME: Image processing for thumbnail generation and original archival.
-// ABOUTME: Returns processed bytes for callers to persist via MediaStore.
+// ABOUTME: Bounded image processing with accurate MIME extensions and aspect-preserving thumbnails.
+// ABOUTME: Content-addressed originals allow safe, repeatable media staging before metadata commits.
 package main
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"image"
 	_ "image/gif"
 	"image/jpeg"
-	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"omnicollect/storage"
 	"os"
+
 	"github.com/disintegration/imaging"
-	"github.com/google/uuid"
 	_ "golang.org/x/image/webp"
 )
 
-// ProcessImageResult contains metadata about a processed image.
-// Defined here to keep imaging self-contained; re-exported from models.go.
 type processedImageData struct {
 	Filename      string
 	OriginalFile  string
@@ -30,117 +30,100 @@ type processedImageData struct {
 	Format        string
 }
 
-// validateImage checks that a file is a supported image by reading its header.
-// Returns the detected format string ("jpeg", "png", "gif", "webp") and dimensions.
-func validateImage(path string) (format string, width, height int, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", 0, 0, fmt.Errorf("opening file: %w", err)
-	}
-	defer f.Close()
+const maxImageFileSize = 30 * 1024 * 1024
+const maxImagePixels int64 = 24_000_000
 
-	cfg, fmt_str, err := image.DecodeConfig(f)
+var imageWorkers = make(chan struct{}, 2)
+var imageExtensions = map[string]string{"jpeg": ".jpg", "png": ".png", "gif": ".gif", "webp": ".webp"}
+
+func validateImageConfig(reader io.Reader) (string, int, int, error) {
+	cfg, format, err := image.DecodeConfig(reader)
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("not a valid image: %w", err)
 	}
-
-	supported := map[string]bool{"jpeg": true, "png": true, "gif": true, "webp": true}
-	if !supported[fmt_str] {
-		return "", 0, 0, fmt.Errorf("unsupported image format: %s", fmt_str)
+	if imageExtensions[format] == "" {
+		return "", 0, 0, fmt.Errorf("unsupported image format: %s", format)
 	}
-
-	return fmt_str, cfg.Width, cfg.Height, nil
+	if cfg.Width < 1 || cfg.Height < 1 || int64(cfg.Width) > maxImagePixels/int64(cfg.Height) {
+		return "", 0, 0, fmt.Errorf("image exceeds the 24 megapixel limit")
+	}
+	return format, cfg.Width, cfg.Height, nil
 }
 
-// maxImageFileSize is the maximum file size (in bytes) accepted for
-// image processing. Larger files would cause excessive memory usage
-// during full-image decode. 30 MB covers high-res DSLR JPEGs; users
-// with larger TIFFs should convert before importing.
-const maxImageFileSize = 30 * 1024 * 1024
-
-// processImageToBytes validates an image, reads the original bytes, and generates
-// thumbnail bytes in memory. The caller persists via MediaStore.
-func processImageToBytes(sourcePath string) (processedImageData, error) {
-	// Check file size before expensive decode
-	info, err := os.Stat(sourcePath)
-	if err != nil {
-		return processedImageData{}, fmt.Errorf("reading file info: %w", err)
+func acquireImageWorker(ctx context.Context) (func(), error) {
+	select {
+	case imageWorkers <- struct{}{}:
+		return func() { <-imageWorkers }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	if info.Size() > maxImageFileSize {
-		sizeMB := info.Size() / (1024 * 1024)
-		return processedImageData{}, fmt.Errorf(
-			"image too large (%d MB). Maximum supported size is %d MB",
-			sizeMB, maxImageFileSize/(1024*1024))
-	}
+}
 
-	format, width, height, err := validateImage(sourcePath)
+func persistProcessedImage(ctx context.Context, media storage.MediaStore, data processedImageData) (ProcessImageResult, error) {
+	if err := media.SaveOriginal(ctx, data.OriginalFile, data.OriginalBytes); err != nil {
+		return ProcessImageResult{}, fmt.Errorf("saving original: %w", err)
+	}
+	if err := media.SaveThumbnail(ctx, data.ThumbFile, data.ThumbBytes); err != nil {
+		return ProcessImageResult{}, fmt.Errorf("saving thumbnail: %w", err)
+	}
+	return ProcessImageResult{Filename: data.Filename, OriginalPath: data.OriginalFile, ThumbnailPath: data.ThumbFile, Width: data.Width, Height: data.Height, Format: data.Format}, nil
+}
+
+func processImageFile(ctx context.Context, sourcePath string) (processedImageData, error) {
+	release, err := acquireImageWorker(ctx)
 	if err != nil {
 		return processedImageData{}, err
 	}
-
-	// Generate UUID-based filename
-	id := uuid.New().String()
-	// Use the same filename for both original and thumbnail so the frontend
-	// can reference a single filename for both /originals/ and /thumbnails/ paths.
-	// The original bytes are stored as-is regardless of the .jpg extension.
-	filename := id + ".jpg"
-	origFilename := filename
-	thumbFilename := filename
-
-	// Read original bytes
-	origBytes, err := os.ReadFile(sourcePath)
+	defer release()
+	file, err := os.Open(sourcePath)
 	if err != nil {
-		return processedImageData{}, fmt.Errorf("reading original: %w", err)
+		return processedImageData{}, err
 	}
-
-	// Generate thumbnail bytes in memory
-	thumbBytes, err := generateThumbnailBytes(sourcePath)
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxImageFileSize+1))
 	if err != nil {
-		return processedImageData{}, fmt.Errorf("generating thumbnail: %w", err)
+		return processedImageData{}, err
 	}
-
-	return processedImageData{
-		Filename:      thumbFilename,
-		OriginalFile:  origFilename,
-		ThumbFile:     thumbFilename,
-		OriginalBytes: origBytes,
-		ThumbBytes:    thumbBytes,
-		Width:         width,
-		Height:        height,
-		Format:        format,
-	}, nil
+	return decodeImage(ctx, data)
 }
 
-// generateThumbnailBytes creates a 300x300 center-cropped JPEG thumbnail and returns the bytes.
-func generateThumbnailBytes(srcPath string) ([]byte, error) {
-	src, err := imaging.Open(srcPath, imaging.AutoOrientation(true))
+func processImageBytes(ctx context.Context, data []byte) (processedImageData, error) {
+	release, err := acquireImageWorker(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("opening image: %w", err)
+		return processedImageData{}, err
 	}
-
-	thumb := imaging.Fill(src, 300, 300, imaging.Center, imaging.Lanczos)
-
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, thumb, &jpeg.Options{Quality: 80}); err != nil {
-		return nil, fmt.Errorf("encoding thumbnail: %w", err)
-	}
-	return buf.Bytes(), nil
+	defer release()
+	return decodeImage(ctx, data)
 }
 
-// copyFile copies a file from src to dst. Retained for backup and other uses.
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
+func decodeImage(ctx context.Context, data []byte) (processedImageData, error) {
+	if len(data) > maxImageFileSize {
+		return processedImageData{}, fmt.Errorf("image exceeds the 30 MB limit")
 	}
-	defer in.Close()
-
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
+	if err := ctx.Err(); err != nil {
+		return processedImageData{}, err
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, in)
-	return err
+	format, _, _, err := validateImageConfig(bytes.NewReader(data))
+	if err != nil {
+		return processedImageData{}, err
+	}
+	source, err := imaging.Decode(bytes.NewReader(data), imaging.AutoOrientation(true))
+	if err != nil {
+		return processedImageData{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return processedImageData{}, err
+	}
+	thumb := imaging.Fit(source, 400, 400, imaging.Lanczos)
+	var buffer bytes.Buffer
+	if err := jpeg.Encode(&buffer, thumb, &jpeg.Options{Quality: 80}); err != nil {
+		return processedImageData{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return processedImageData{}, err
+	}
+	digest := sha256.Sum256(data)
+	name := fmt.Sprintf("%x%s", digest, imageExtensions[format])
+	return processedImageData{Filename: name, OriginalFile: name, ThumbFile: name, OriginalBytes: data,
+		ThumbBytes: buffer.Bytes(), Width: source.Bounds().Dx(), Height: source.Bounds().Dy(), Format: format}, nil
 }

@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"regexp"
@@ -11,15 +12,15 @@ import (
 
 // Item represents a single collectible record.
 type Item struct {
-	ID            string                 `json:"id"`
-	ModuleID      string                 `json:"moduleId"`
-	Title         string                 `json:"title"`
-	PurchasePrice *float64               `json:"purchasePrice"`
-	Images        []string               `json:"images"`
-	Tags          []string               `json:"tags"`
-	Attributes    map[string]any         `json:"attributes"`
-	CreatedAt     string                 `json:"createdAt"`
-	UpdatedAt     string                 `json:"updatedAt"`
+	ID            string         `json:"id"`
+	ModuleID      string         `json:"moduleId"`
+	Title         string         `json:"title"`
+	PurchasePrice *float64       `json:"purchasePrice"`
+	Images        []string       `json:"images"`
+	Tags          []string       `json:"tags"`
+	Attributes    map[string]any `json:"attributes"`
+	CreatedAt     string         `json:"createdAt"`
+	UpdatedAt     string         `json:"updatedAt"`
 }
 
 // TagCount holds a tag name and the number of items using it.
@@ -68,9 +69,18 @@ type Showcase struct {
 // Store defines all database operations for items, modules, settings, and showcases.
 // Implementations: SQLiteStore (local mode) and PostgresStore (cloud mode).
 type Store interface {
+	WithContext(ctx context.Context) Store
+	SaveItem(ctx context.Context, item Item) (Item, error)
 	QueryItems(query, moduleID, filtersJSON, tagsJSON string) ([]Item, error)
+	QueryItemPage(query, moduleID, filtersJSON, tagsJSON string, limit, offset int) (ItemPage, error)
+	CollectionSummary() (CollectionSummary, error)
+	ReadGalleryPage(moduleID string, page int) (GalleryPage, error)
 	InsertItem(item Item) (Item, error)
 	UpdateItem(item Item) (Item, error)
+	DeleteWithRecovery(ids []string) (DeletionBatch, error)
+	ListDeletions() ([]DeletionBatch, error)
+	RecoverDeletion(id string) (int, error)
+	DiscardDeletion(id string) error
 	DeleteItem(id string) error
 	DeleteItems(ids []string) (int64, error)
 	BulkUpdateModule(ids []string, newModuleID string) (int64, error)
@@ -83,6 +93,9 @@ type Store interface {
 	LoadModuleFile(id string) (string, error)
 	GetSettings() (string, error)
 	SaveSettings(json string) error
+	Snapshot(ctx context.Context) (Snapshot, error)
+	Restore(ctx context.Context, snapshot Snapshot, mode string) (RestoreResult, error)
+	HasShowcaseImage(ctx context.Context, moduleID, filename string) (bool, error)
 	GetShowcaseBySlug(slug string) (*Showcase, error)
 	GetShowcaseForModule(moduleID string) (*Showcase, error)
 	UpsertShowcase(showcase Showcase) error

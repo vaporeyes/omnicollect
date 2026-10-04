@@ -253,6 +253,9 @@
       .detail-content { margin: 12px; }
       .detail-body { padding: 16px; }
     }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body>
@@ -270,7 +273,7 @@
         {{range .Items}}
         <a href="#item-{{.ID}}" class="card">
           {{if .PrimaryImage}}
-          <img class="card-img" src="/thumbnails/{{.PrimaryImage}}" loading="lazy" alt="{{.Title}}">
+          <img class="card-img" src="/showcase/{{$.Slug}}/media/thumbnails/{{.PrimaryImage}}" loading="lazy" alt="{{.Title}}">
           {{else}}
           <div class="card-img" style="display:flex;align-items:center;justify-content:center;color:#ccc;font-size:2rem;">&#9633;</div>
           {{end}}
@@ -288,7 +291,7 @@
           <div class="detail-content">
             <a href="#" class="detail-close">&times;</a>
             {{if .PrimaryImage}}
-            <img class="detail-img" src="/originals/{{.PrimaryImage}}" alt="{{.Title}}">
+            <img class="detail-img" src="/showcase/{{$.Slug}}/media/originals/{{.PrimaryImage}}" alt="{{.Title}}">
             {{end}}
             <div class="detail-body">
               <h2>{{.Title}}</h2>
@@ -313,6 +316,7 @@
       {{end}}
     </main>
 
+    {{if .Truncated}}<p>Only the first 41,667 pages are available here. The item count includes records beyond this browsing limit.</p>{{end}}
     {{if gt .TotalPages 1}}
     <nav class="pagination">
       {{if gt .Page 1}}

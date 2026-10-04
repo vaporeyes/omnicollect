@@ -1,5 +1,9 @@
+<script lang="ts">
+let nextDraftControlID = 0
+</script>
 <script lang="ts" setup>
-import {reactive, ref, watch, computed, onMounted, nextTick} from 'vue'
+import {reactive, ref, watch, computed, onMounted, onBeforeUnmount} from 'vue'
+import {createItemDraft} from '../composables/itemDraft'
 import type {Item, ModuleSchema, TagCount, AIStatus} from '../api/types'
 import {getAllTags, getAIStatus, analyzeItem} from '../api/client'
 import {useToastStore} from '../stores/toastStore'
@@ -10,23 +14,38 @@ import TagInput from './TagInput.vue'
 const props = defineProps<{
   schema: ModuleSchema
   item?: Item | null
+  saveItem: (item: Item) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
-  save: [item: Item]
   cancel: []
 }>()
 
+const draftControlID = `draft-control-${++nextDraftControlID}`
 const baseFields = reactive({
   title: '',
   purchasePrice: null as number | null,
 })
 
-const attributes = reactive<Record<string, any>>({})
+const attributes = reactive<Record<string, any>>(Object.create(null))
 const itemImages = ref<string[]>([])
 const itemTags = ref<string[]>([])
 const allTags = ref<TagCount[]>([])
 const validationErrors = reactive<Record<string, string>>({})
+
+const submitting = ref(false)
+const saveError = ref('')
+const saveUncertain = ref(false)
+const uploading = ref(false)
+const initialState = ref('')
+const snapshot = () => JSON.stringify({baseFields, attributes, images: itemImages.value, tags: itemTags.value})
+const dirty = computed(() => snapshot() !== initialState.value)
+const working = computed(() => uploading.value || aiAnalyzing.value)
+defineExpose({dirty, working, submitting})
+let aiRequest: AbortController | undefined
+let draftGeneration = 0
+const touchedDuringAI = new Set<string>()
+onBeforeUnmount(() => { draftGeneration++; aiRequest?.abort() })
 
 const isEditing = computed(() => !!props.item?.id)
 
@@ -38,7 +57,7 @@ const aiFilledFields = ref<Set<string>>(new Set())
 const aiTitleSuggestion = ref('')
 
 const aiButtonEnabled = computed(() => {
-  return aiStatus.value?.enabled && itemImages.value.length > 0 && !aiAnalyzing.value
+  return aiStatus.value?.enabled && itemImages.value.length > 0 && !aiAnalyzing.value && !submitting.value && !uploading.value
 })
 
 onMounted(async () => {
@@ -49,15 +68,20 @@ onMounted(async () => {
 async function runAIAnalysis() {
   if (!aiButtonEnabled.value) return
   aiAnalyzing.value = true
+  touchedDuringAI.clear()
+  const generation = draftGeneration
+  const controller = new AbortController()
+  aiRequest = controller
   aiFilledFields.value.clear()
   aiTitleSuggestion.value = ''
 
   try {
-    const result = await analyzeItem(itemImages.value[0], props.schema.id)
+    const result = await analyzeItem(itemImages.value[0], props.schema.id, controller.signal)
+    if (generation !== draftGeneration || controller.signal.aborted) return
     let filledCount = 0
 
     // Title handling
-    if (result.title) {
+    if (result.title && !touchedDuringAI.has('title')) {
       if (!baseFields.title.trim()) {
         baseFields.title = result.title
         aiFilledFields.value.add('title')
@@ -73,7 +97,7 @@ async function runAIAnalysis() {
       const isEmpty = current === null || current === undefined ||
         (typeof current === 'string' && current.trim() === '') ||
         (typeof current === 'number' && isNaN(current))
-      if (isEmpty && key in attributes) {
+      if (isEmpty && key in attributes && !touchedDuringAI.has(key)) {
         attributes[key] = val
         aiFilledFields.value.add(key)
         filledCount++
@@ -85,13 +109,14 @@ async function runAIAnalysis() {
     }
     toastStore.show(`Smart Scan complete. Please review highlighted fields.`, 'success')
   } catch (err: any) {
-    toastStore.show('AI Scan failed: ' + (err.message || err), 'error')
+    if (generation === draftGeneration && !controller.signal.aborted) toastStore.show('AI Scan failed: ' + (err.message || err), 'error')
   } finally {
-    aiAnalyzing.value = false
+    if (generation === draftGeneration) aiAnalyzing.value = false
   }
 }
 
 function clearHighlight(fieldId: string) {
+  if (aiAnalyzing.value) touchedDuringAI.add(fieldId)
   if (aiFilledFields.value.has(fieldId)) {
     aiFilledFields.value.delete(fieldId)
   }
@@ -105,26 +130,21 @@ function acceptTitleSuggestion() {
 
 // Initialize form when item or schema changes
 watch(() => [props.item, props.schema], () => {
-  // Reset base fields, images, and tags
-  baseFields.title = props.item?.title ?? ''
-  baseFields.purchasePrice = props.item?.purchasePrice ?? null
-  itemImages.value = props.item?.images ? [...props.item.images] : []
-  itemTags.value = props.item?.tags ? [...props.item.tags] : []
-
-  // Reset attributes from item or defaults
-  const itemAttrs = props.item?.attributes ?? {}
-  for (const attr of props.schema.attributes) {
-    if (attr.name in itemAttrs) {
-      attributes[attr.name] = itemAttrs[attr.name]
-    } else {
-      // Set default based on type
-      switch (attr.type) {
-        case 'boolean': attributes[attr.name] = false; break
-        case 'number': attributes[attr.name] = null; break
-        default: attributes[attr.name] = ''
-      }
-    }
-  }
+  draftGeneration++
+  saveError.value = ''
+  saveUncertain.value = false
+  aiRequest?.abort()
+  aiAnalyzing.value = false
+  aiTitleSuggestion.value = ''
+  aiFilledFields.value.clear()
+  const draft = createItemDraft(props.schema, props.item)
+  baseFields.title = draft.title
+  baseFields.purchasePrice = draft.purchasePrice
+  itemImages.value = draft.images
+  itemTags.value = draft.tags
+  Object.keys(attributes).forEach(key => delete attributes[key])
+  Object.assign(attributes, draft.attributes)
+  initialState.value = snapshot()
 
   // Clear errors
   Object.keys(validationErrors).forEach(k => delete validationErrors[k])
@@ -156,23 +176,29 @@ function onTitleInput() {
   clearHighlight('title')
 }
 
-function onSubmit() {
-  aiTitleSuggestion.value = ''
-  if (!validate()) return
-
-  const item: Item = {
-    id: props.item?.id ?? '',
-    moduleId: props.schema.id,
-    title: baseFields.title.trim(),
-    purchasePrice: baseFields.purchasePrice,
-    images: itemImages.value,
-    tags: itemTags.value,
-    attributes: {...attributes},
-    createdAt: props.item?.createdAt ?? '',
-    updatedAt: '',
+async function onSubmit() {
+  if (submitting.value || saveUncertain.value || working.value || !validate()) return
+  submitting.value = true
+  saveError.value = ''
+  try {
+    const item: Item = {
+      ...createItemDraft(props.schema, props.item),
+      title: baseFields.title.trim(), purchasePrice: baseFields.purchasePrice,
+      images: [...itemImages.value], tags: [...itemTags.value],
+      attributes: JSON.parse(JSON.stringify(attributes)),
+    }
+    if (await props.saveItem(item)) initialState.value = snapshot()
+  } catch (error: any) {
+    // A timeout/lost acknowledgement can follow a committed create. Never offer
+    // a blind retry (which could create another item) after an uncertain outcome.
+    const rejected = [400, 401, 403, 404, 409, 413, 422, 428].includes(error?.status)
+    saveUncertain.value = !rejected
+    saveError.value = rejected ? (error?.message ?? 'Could not save the draft')
+      : `Save was not confirmed and may have completed: ${error?.message ?? 'Connection lost'}. Saving is locked for this draft. Copy any unsaved details, then reopen the collection to inspect the result before another save.`
+    toastStore.show(saveError.value, 'error')
+  } finally {
+    submitting.value = false
   }
-
-  emit('save', item)
 }
 </script>
 
@@ -180,11 +206,16 @@ function onSubmit() {
   <div class="dynamic-form">
     <h3>{{ isEditing ? 'Edit' : 'New' }} {{ schema.displayName }}</h3>
 
+    <p v-if="saveError" role="alert" class="field-error">{{ saveError }} Your draft has been kept.</p>
     <form @submit.prevent="onSubmit">
+      <fieldset class="draft-fields" :disabled="submitting">
       <!-- Image Attachment Zone with Smart Scan -->
       <div class="image-attach-zone" :class="{'is-scanning': aiAnalyzing}">
         <ImageAttach
+          :key="draftGeneration"
           :images="itemImages"
+          :disabled="submitting || aiAnalyzing"
+          @busy="value => uploading = value"
           @update:images="val => itemImages = val"
         />
         
@@ -214,21 +245,24 @@ function onSubmit() {
       <div class="form-grid">
         <!-- Base fields -->
         <div class="form-field-wrapper" :class="{'ai-highlight': aiFilledFields.has('title')}">
-          <label class="field-label">Title <span class="required">*</span></label>
+          <label :for="draftControlID + '-title'" class="field-label">Title <span class="required">*</span></label>
           <input
             type="text"
             v-model="baseFields.title"
+            :id="draftControlID + '-title'" aria-required="true"
+            :aria-invalid="!!validationErrors.title"
+            :aria-describedby="validationErrors.title ? draftControlID + '-title-error' : undefined"
             placeholder="Item title"
             class="field-input"
             @input="onTitleInput"
             @focus="clearHighlight('title')"
           />
-          <div v-if="validationErrors['title']" class="field-error">
+          <div v-if="validationErrors['title']" :id="draftControlID + '-title-error'" role="alert" class="field-error">
             {{ validationErrors['title'] }}
           </div>
-          <div v-if="aiTitleSuggestion" class="ai-title-suggestion" @click="acceptTitleSuggestion">
+          <button v-if="aiTitleSuggestion" type="button" class="ai-title-suggestion" @click="acceptTitleSuggestion">
             AI suggestion: {{ aiTitleSuggestion }}
-          </div>
+          </button>
           <!-- Auto-fill Badge -->
           <div v-if="aiFilledFields.has('title')" class="ai-badge">
             <svg class="sparkles-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
@@ -237,10 +271,11 @@ function onSubmit() {
         </div>
 
         <div class="form-field-wrapper" :class="{'ai-highlight': aiFilledFields.has('purchasePrice')}">
-          <label class="field-label">Purchase Price</label>
+          <label :for="draftControlID + '-price'" class="field-label">Purchase Price</label>
           <input
             type="number"
             v-model.number="baseFields.purchasePrice"
+            :id="draftControlID + '-price'"
             placeholder="0.00"
             step="0.01"
             class="field-input"
@@ -265,6 +300,7 @@ function onSubmit() {
             :attribute="attr"
             :modelValue="attributes[attr.name]"
             :errorMessage="validationErrors[attr.name]"
+            :disabled="submitting"
             @update:modelValue="val => { attributes[attr.name] = val; clearHighlight(attr.name); }"
           />
           <div v-if="aiFilledFields.has(attr.name)" class="ai-badge">
@@ -283,14 +319,16 @@ function onSubmit() {
       </div>
 
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="submit" class="btn btn-primary" :disabled="submitting || saveUncertain || working">{{ submitting ? 'Saving…' : uploading ? 'Uploading…' : aiAnalyzing ? 'Scanning…' : 'Save' }}</button>
         <button type="button" class="btn btn-secondary" @click="emit('cancel')">Cancel</button>
       </div>
+      </fieldset>
     </form>
   </div>
 </template>
 
 <style scoped>
+.draft-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .dynamic-form {
   padding: 16px;
   max-width: 800px;

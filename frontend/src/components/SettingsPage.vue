@@ -1,7 +1,8 @@
 <!-- ABOUTME: Settings page for theme mode selection (light/dark/system). -->
 <!-- ABOUTME: Persists choice to backend settings endpoint. -->
 <script lang="ts" setup>
-import {ref, reactive, watch, computed} from 'vue'
+import {ref, reactive, watch, computed, onBeforeUnmount} from 'vue'
+import {useEditorGuard} from '../composables/editorGuard'
 import * as api from '../api/client'
 import {applyTheme, DEFAULT_CONFIG, type ThemeConfig} from '../theme'
 
@@ -18,6 +19,17 @@ const emit = defineEmits<{
 const config = reactive<ThemeConfig>(JSON.parse(JSON.stringify(props.initialConfig)))
 const saving = ref(false)
 const saveMessage = ref<string | null>(null)
+const committed = ref(JSON.stringify(config))
+const dirty = computed(() => JSON.stringify(config) !== committed.value)
+const {canLeave} = useEditorGuard(dirty, saving)
+defineExpose({canLeave})
+let alive = true
+onBeforeUnmount(() => {
+  alive = false
+  const saved: ThemeConfig = JSON.parse(committed.value)
+  applyTheme(saved.mode === 'system' ? props.systemDark : saved.mode === 'dark')
+})
+function requestClose() {if (canLeave()) emit('close')}
 
 const effectiveDark = computed(() => {
   if (config.mode === 'system') return props.systemDark
@@ -26,18 +38,21 @@ const effectiveDark = computed(() => {
 
 // Live preview: apply theme as mode changes
 watch(
-  () => config.mode,
+  () => [config.mode, props.systemDark],
   () => applyTheme(effectiveDark.value),
 )
 
 async function onSave() {
+  if (saving.value) return
   saving.value = true
   saveMessage.value = null
   try {
-    await api.put('/api/v1/settings', {theme: config})
-    emit('saved', JSON.parse(JSON.stringify(config)))
+    const snapshot = JSON.stringify(config)
+    await api.put('/api/v1/settings', {theme: JSON.parse(snapshot)})
+    if (!alive) return
+    committed.value = snapshot
+    emit('saved', JSON.parse(snapshot))
     saveMessage.value = 'Settings saved'
-    setTimeout(() => { saveMessage.value = null }, 3000)
   } catch (e: any) {
     saveMessage.value = `Error: ${e?.message ?? e}`
   } finally {
@@ -49,10 +64,10 @@ async function onSave() {
 <template>
   <div class="settings-page">
     <div class="settings-header">
-      <button class="back-btn" @click="emit('close')">&larr;</button>
+      <button class="back-btn" aria-label="Close settings" :disabled="saving" @click="requestClose">&larr;</button>
       <h2>Settings</h2>
       <div class="header-actions">
-        <span v-if="saveMessage" class="save-msg" :class="{error: saveMessage.startsWith('Error')}">
+        <span v-if="saveMessage" role="status" class="save-msg" :class="{error: saveMessage.startsWith('Error')}">
           {{ saveMessage }}
         </span>
         <button class="btn-primary" :disabled="saving" @click="onSave">
@@ -67,6 +82,8 @@ async function onSave() {
         <button
           v-for="m in (['light', 'system', 'dark'] as const)"
           :key="m"
+          :disabled="saving"
+          :aria-pressed="config.mode === m"
           :class="['mode-btn', {active: config.mode === m}]"
           @click="config.mode = m"
         >

@@ -1,19 +1,30 @@
 <!-- ABOUTME: CodeMirror-based Markdown editor with a minimal formatting toolbar. -->
 <!-- ABOUTME: Replaces plain textarea for schema attributes with widget: "textarea". -->
 <script lang="ts" setup>
-import {ref} from 'vue'
+import {ref, computed} from 'vue'
+import {EditorView} from '@codemirror/view'
 import {Codemirror} from 'vue-codemirror'
 import {markdown} from '@codemirror/lang-markdown'
 
 const props = defineProps<{
   modelValue: string
+  disabled?: boolean
+  labelledBy?: string
+  describedBy?: string
+  invalid?: boolean
+  required?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
 }>()
 
-const extensions = [markdown()]
+const extensions = computed(() => [markdown(), EditorView.contentAttributes.of({
+  ...(props.labelledBy ? {'aria-labelledby': props.labelledBy} : {'aria-label': 'Markdown text'}),
+  ...(props.describedBy ? {'aria-describedby': props.describedBy} : {}),
+  'aria-invalid': String(!!props.invalid),
+  'aria-required': String(!!props.required),
+})])
 const cmView = ref<any>(null)
 
 function onReady(payload: any) {
@@ -23,7 +34,7 @@ function onReady(payload: any) {
 // Insert Markdown syntax at cursor or wrap selection
 function insertSyntax(before: string, after: string, placeholder: string) {
   const view = cmView.value
-  if (!view) return
+  if (!view || props.disabled) return
   const {from, to} = view.state.selection.main
   const selected = view.state.sliceDoc(from, to)
   const text = selected || placeholder
@@ -36,7 +47,7 @@ function insertSyntax(before: string, after: string, placeholder: string) {
 
 function insertLinePrefix(prefix: string, placeholder: string) {
   const view = cmView.value
-  if (!view) return
+  if (!view || props.disabled) return
   const {from} = view.state.selection.main
   const line = view.state.doc.lineAt(from)
   const text = line.text.trim() || placeholder
@@ -49,6 +60,7 @@ function insertLinePrefix(prefix: string, placeholder: string) {
 
 // Strip HTML from pasted content to insert as plain text
 function handlePaste(event: ClipboardEvent) {
+  if (props.disabled) return
   const html = event.clipboardData?.getData('text/html')
   if (html) {
     event.preventDefault()
@@ -71,27 +83,28 @@ function link() { insertSyntax('[', '](url)', 'link text') }
 <template>
   <div class="md-editor" @paste="handlePaste">
     <div class="md-toolbar">
-      <button type="button" class="tb-btn" @click="bold" title="Bold">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="bold" aria-label="Bold" title="Bold">
         <strong>B</strong>
       </button>
-      <button type="button" class="tb-btn" @click="italic" title="Italic">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="italic" aria-label="Italic" title="Italic">
         <em>I</em>
       </button>
-      <button type="button" class="tb-btn" @click="heading" title="Heading">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="heading" aria-label="Heading" title="Heading">
         H
       </button>
-      <button type="button" class="tb-btn" @click="bulletList" title="Bullet List">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="bulletList" aria-label="Bullet List" title="Bullet List">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>
       </button>
-      <button type="button" class="tb-btn" @click="numberedList" title="Numbered List">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="numberedList" aria-label="Numbered List" title="Numbered List">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><text x="1" y="8" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">1</text><text x="1" y="14" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">2</text><text x="1" y="20" font-size="7" fill="currentColor" stroke="none" font-family="sans-serif">3</text></svg>
       </button>
-      <button type="button" class="tb-btn" @click="link" title="Link">
+      <button type="button" class="tb-btn" :disabled="disabled" @click="link" aria-label="Link" title="Link">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
       </button>
     </div>
     <Codemirror
       :modelValue="modelValue"
+      :disabled="disabled"
       @update:modelValue="val => emit('update:modelValue', val)"
       :extensions="extensions"
       :style="{minHeight: '120px', fontSize: '14px'}"

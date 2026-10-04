@@ -1,43 +1,54 @@
 <script lang="ts" setup>
-import {ref} from 'vue'
+import MediaImage from './MediaImage.vue'
+import {ref, onBeforeUnmount} from 'vue'
 import * as api from '../api/client'
 import type {ProcessImageResult} from '../api/types'
 
 const props = defineProps<{
   images: string[]
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:images': [filenames: string[]]
+  busy: [value: boolean]
 }>()
+
+let upload: AbortController | undefined
+onBeforeUnmount(() => { upload?.abort(); emit('busy', false) })
 
 const error = ref<string | null>(null)
 const processing = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 function triggerFileInput() {
-  fileInput.value?.click()
+  if (!processing.value && !props.disabled) fileInput.value?.click()
 }
 
 async function onFileSelected(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
-  if (!file) return
+  if (!file || processing.value || props.disabled) return
   input.value = '' // reset so same file can be selected again
 
   error.value = null
   processing.value = true
+  emit('busy', true)
+  const controller = new AbortController()
+  upload = controller
   try {
-    const result = await api.postFile<ProcessImageResult>('/api/v1/images/upload', file)
-    emit('update:images', [...props.images, result.filename])
+    const result = await api.postFile<ProcessImageResult>('/api/v1/images/upload', file, 'image', controller.signal)
+    if (!controller.signal.aborted && !props.images.includes(result.filename)) emit('update:images', [...props.images, result.filename])
   } catch (e: any) {
-    error.value = e?.message ?? String(e)
+    if (!controller.signal.aborted) error.value = e?.message ?? String(e)
   } finally {
     processing.value = false
+    if (!controller.signal.aborted) emit('busy', false)
   }
 }
 
 function removeImage(index: number) {
+  if (processing.value || props.disabled) return
   const updated = [...props.images]
   updated.splice(index, 1)
   emit('update:images', updated)
@@ -50,8 +61,8 @@ function removeImage(index: number) {
 
     <div v-if="images.length > 0" class="image-previews">
       <div v-for="(filename, idx) in images" :key="filename" class="image-preview">
-        <img :src="'/thumbnails/' + encodeURIComponent(filename)" alt="Attached image" />
-        <button type="button" class="remove-btn" @click="removeImage(idx)">x</button>
+        <MediaImage :src="'/thumbnails/' + encodeURIComponent(filename)" alt="Attached image" />
+        <button type="button" :disabled="processing || disabled" aria-label="Remove attached image" class="remove-btn" @click="removeImage(idx)">x</button>
       </div>
     </div>
 
@@ -62,7 +73,7 @@ function removeImage(index: number) {
       style="display: none"
       @change="onFileSelected"
     />
-    <button type="button" class="btn btn-secondary" :disabled="processing" @click="triggerFileInput">
+    <button type="button" class="btn btn-secondary" :disabled="processing || disabled" @click="triggerFileInput">
       {{ processing ? 'Processing...' : 'Add Image' }}
     </button>
 

@@ -26,12 +26,10 @@ export const auth0Plugin = isAuthConfigured
 // The getAccessTokenSilently function is available after the plugin is installed
 // and the user is authenticated. We set it up lazily on first API call.
 if (auth0Plugin) {
-  let tokenFn: (() => Promise<string>) | null = null
+  const client = auth0Plugin
   setTokenGetter(async () => {
-    if (!tokenFn) {
-      // Access the internal client to get the token function
-      tokenFn = auth0Plugin.getAccessTokenSilently.bind(auth0Plugin)
-    }
-    return tokenFn()
+    const token = await client.getAccessTokenSilently()
+    if (!token) throw new Error('Authentication did not provide an access token')
+    return token
   })
 }

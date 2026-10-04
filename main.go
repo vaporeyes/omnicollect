@@ -3,12 +3,10 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"flag"
-	"fmt"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed all:frontend/dist
@@ -24,7 +23,7 @@ var assets embed.FS
 
 func main() {
 	serve := flag.Bool("serve", false, "Start as standalone HTTP server (no desktop window)")
-	port := flag.Int("port", 8080, "HTTP server port (used with --serve)")
+	port := flag.Int("port", LoadConfig().Port, "HTTP server port (used with --serve)")
 	migrate := flag.Bool("migrate", false, "Migrate SQLite database to PostgreSQL and exit")
 	source := flag.String("source", "", "Path to SQLite database file (used with --migrate)")
 	tenant := flag.String("tenant", "default", "Tenant ID for migration (used with --migrate)")
@@ -57,49 +56,28 @@ func main() {
 		return
 	}
 
-	// Desktop mode: start embedded HTTP server on random port, then Wails
+	// Desktop requests use the same Wails origin; no unauthenticated TCP port.
 	app.Init()
 	srv := NewServer(app)
-	ln, err := srv.Start(0) // port 0 = random available
-	if err != nil {
-		log.Fatalf("failed to start embedded server: %v", err)
-	}
-	serverURL := fmt.Sprintf("http://localhost:%d", ln.Addr().(*net.TCPAddr).Port)
-	log.Printf("Embedded server at %s", serverURL)
 
-	err = wails.Run(&options.App{
+	err := wails.Run(&options.App{
 		Title:  "OmniCollect",
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
 			Assets:  assets,
-			Handler: newLocalFileHandler(app),
+			Handler: srv.buildHandler(),
 		},
-		OnStartup: app.startup,
-		Bind: []interface{}{
-			app,
-		},
+		OnStartup:     app.startup,
+		OnBeforeClose: newDesktopCloseGuard(runtime.MessageDialog),
+		OnShutdown:    func(_ context.Context) { app.store.Close() },
+		// All application operations use the authenticated same-origin REST API.
+		// Do not expose a parallel, unscoped Wails binding surface.
 	})
 
 	if err != nil {
 		println("Error:", err.Error())
 	}
-}
-
-// newLocalFileHandler returns an http.Handler that serves media files
-// from the appropriate MediaStore for thumbnail and original image display.
-func newLocalFileHandler(app *App) http.Handler {
-	mux := http.NewServeMux()
-
-	if localStore, ok := app.mediaStore.(*storage.LocalMediaStore); ok {
-		mediaBase := localStore.BaseDir()
-		mux.Handle("/thumbnails/", http.StripPrefix("/thumbnails/",
-			http.FileServer(http.Dir(filepath.Join(mediaBase, "thumbnails")))))
-		mux.Handle("/originals/", http.StripPrefix("/originals/",
-			http.FileServer(http.Dir(filepath.Join(mediaBase, "originals")))))
-	}
-
-	return mux
 }
 
 // runMigration handles the --migrate CLI mode.

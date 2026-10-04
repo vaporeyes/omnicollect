@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {computed} from 'vue'
+import {computed, toRaw, ref, nextTick} from 'vue'
 import draggable from 'vuedraggable'
 
 interface DraftAttribute {
@@ -24,6 +24,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:schema': [schema: DraftSchema]
 }>()
+
+const editorElement = ref<HTMLElement | null>(null)
+const attributeKeys = new WeakMap<object, number>()
+let nextAttributeKey = 0
+function fieldKey(attribute: DraftAttribute): number {
+  const raw = toRaw(attribute)
+  if (!attributeKeys.has(raw)) attributeKeys.set(raw, ++nextAttributeKey)
+  return attributeKeys.get(raw)!
+}
 
 const validTypes = ['string', 'number', 'boolean', 'date', 'enum']
 
@@ -67,17 +76,26 @@ function removeField(index: number) {
   emit('update:schema', {...props.schema, attributes: attrs})
 }
 
-function onDragEnd(event: any) {
+function reorderFields(attributes: DraftAttribute[]) {
+  emit('update:schema', {...props.schema, attributes: [...attributes]})
+}
+async function moveField(index: number, delta: number) {
+  const target = index + delta
+  if (target < 0 || target >= props.schema.attributes.length) return
   const attrs = [...props.schema.attributes]
-  const [moved] = attrs.splice(event.oldIndex, 1)
-  attrs.splice(event.newIndex, 0, moved)
-  emit('update:schema', {...props.schema, attributes: attrs})
+  const [moved] = attrs.splice(index, 1)
+  attrs.splice(target, 0, moved)
+  reorderFields(attrs)
+  await nextTick()
+  editorElement.value?.querySelector<HTMLInputElement>(`input[aria-label="Field ${target + 1} name"]`)?.focus()
 }
 
 function updateAttribute(index: number, key: string, value: any) {
   const attrs = props.schema.attributes.map((a, i) => {
     if (i !== index) return a
-    return {...a, [key]: value}
+    const updated = {...a, [key]: value}
+    attributeKeys.set(updated, fieldKey(a))
+    return updated
   })
   emit('update:schema', {...props.schema, attributes: attrs})
 }
@@ -85,7 +103,9 @@ function updateAttribute(index: number, key: string, value: any) {
 function updateDisplay(index: number, key: string, value: string) {
   const attrs = props.schema.attributes.map((a, i) => {
     if (i !== index) return a
-    return {...a, display: {...a.display, [key]: value}}
+    const updated = {...a, display: {...a.display, [key]: value}}
+    attributeKeys.set(updated, fieldKey(a))
+    return updated
   })
   emit('update:schema', {...props.schema, attributes: attrs})
 }
@@ -111,7 +131,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
 </script>
 
 <template>
-  <div class="visual-editor">
+  <div ref="editorElement" class="visual-editor">
     <!-- Schema metadata -->
     <div class="meta-section">
       <div class="form-field">
@@ -120,13 +140,13 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
           type="text"
           :value="schema.displayName"
           @input="updateDisplayName(($event.target as HTMLInputElement).value)"
-          placeholder="e.g., Vinyl Records"
+          aria-label="Schema display name" placeholder="e.g., Vinyl Records"
           class="field-input"
         />
       </div>
       <div class="form-field">
         <label class="field-label">ID</label>
-        <input type="text" :value="schema.id" disabled class="field-input id-field" />
+        <input type="text" aria-label="Schema ID" :value="schema.id" disabled class="field-input id-field" />
       </div>
       <div class="form-field">
         <label class="field-label">Description</label>
@@ -134,7 +154,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
           type="text"
           :value="schema.description"
           @input="updateField('description', ($event.target as HTMLInputElement).value)"
-          placeholder="Optional description"
+          aria-label="Schema description" placeholder="Optional description"
           class="field-input"
         />
       </div>
@@ -145,11 +165,11 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
       <h4>Fields</h4>
 
       <draggable
-        :list="schema.attributes"
-        item-key="name"
+        :model-value="schema.attributes"
+        :item-key="fieldKey"
         handle=".drag-handle"
         ghost-class="drag-ghost"
-        @end="onDragEnd"
+        @update:model-value="reorderFields"
       >
         <template #item="{element: attr, index: idx}">
         <div class="field-row">
@@ -159,38 +179,40 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
             type="text"
             :value="attr.name"
             @input="updateAttribute(idx, 'name', ($event.target as HTMLInputElement).value)"
-            placeholder="Field name"
+            :aria-label="`Field ${idx + 1} name`" placeholder="Field name"
             class="field-name-input"
           />
           <select
             :value="attr.type"
             @change="updateAttribute(idx, 'type', ($event.target as HTMLSelectElement).value)"
-            class="type-select"
+            :aria-label="`Field ${idx + 1} type`" class="type-select"
           >
             <option v-for="t in validTypes" :key="t" :value="t">{{ t }}</option>
           </select>
           <label class="req-toggle">
             <input
               type="checkbox"
-              :checked="attr.required"
+              :aria-label="`Require field ${idx + 1}`" :checked="attr.required"
               @change="updateAttribute(idx, 'required', ($event.target as HTMLInputElement).checked)"
             />
             Req
           </label>
-          <button class="icon-btn remove-btn" @click="removeField(idx)" title="Remove">x</button>
+          <button class="icon-btn" :aria-label="`Move field ${idx + 1} up`" :disabled="idx === 0" @click="moveField(idx, -1)">↑</button>
+          <button class="icon-btn" :aria-label="`Move field ${idx + 1} down`" :disabled="idx === schema.attributes.length - 1" @click="moveField(idx, 1)">↓</button>
+          <button class="icon-btn remove-btn" @click="removeField(idx)" :aria-label="`Remove field ${idx + 1}`">x</button>
         </div>
 
         <!-- Enum options -->
         <div v-if="attr.type === 'enum'" class="enum-options">
-          <div v-for="(opt, oi) in attr.options" :key="oi" class="option-row">
+          <div v-for="(opt, oi) in (attr.options as string[])" :key="oi" class="option-row">
             <input
               type="text"
               :value="opt"
               @input="updateOption(idx, oi, ($event.target as HTMLInputElement).value)"
-              placeholder="Option value"
+              :aria-label="`Option ${oi + 1} for field ${idx + 1}`" placeholder="Option value"
               class="option-input"
             />
-            <button class="icon-btn remove-btn" @click="removeOption(idx, oi)">x</button>
+            <button class="icon-btn remove-btn" :aria-label="`Remove option ${oi + 1} from field ${idx + 1}`" @click="removeOption(idx, oi)">x</button>
           </div>
           <button class="add-option-btn" @click="addOption(idx)">+ Add option</button>
         </div>
@@ -203,18 +225,18 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
               type="text"
               :value="attr.display?.label || ''"
               @input="updateDisplay(idx, 'label', ($event.target as HTMLInputElement).value)"
-              placeholder="Label override"
+              :aria-label="`Display label for field ${idx + 1}`" placeholder="Label override"
               class="hint-input"
             />
             <input
               type="text"
               :value="attr.display?.placeholder || ''"
               @input="updateDisplay(idx, 'placeholder', ($event.target as HTMLInputElement).value)"
-              placeholder="Placeholder text"
+              :aria-label="`Placeholder for field ${idx + 1}`" placeholder="Placeholder text"
               class="hint-input"
             />
             <select
-              :value="attr.display?.widget || ''"
+              :aria-label="`Widget for field ${idx + 1}`" :value="attr.display?.widget || ''"
               @change="updateDisplay(idx, 'widget', ($event.target as HTMLSelectElement).value)"
               class="hint-input"
             >
@@ -276,6 +298,7 @@ function updateOption(attrIndex: number, optIndex: number, value: string) {
   margin-bottom: 8px;
 }
 .field-main {
+  flex-wrap: wrap;
   display: flex;
   gap: 4px;
   align-items: center;

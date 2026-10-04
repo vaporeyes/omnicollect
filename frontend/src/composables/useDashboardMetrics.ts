@@ -19,6 +19,9 @@ export interface TimeBucket {
 }
 
 export interface DashboardMetrics {
+  pricedItems: number
+  invalidPrices: number
+  valueAvailable: boolean
   totalValue: number
   totalItems: number
   mostValuableItem: {id: string; title: string; price: number} | null
@@ -34,6 +37,8 @@ export function computeDashboardMetrics(
 ): DashboardMetrics {
   const totalItems = items.length
   let totalValue = 0
+  let pricedItems = 0
+  let invalidPrices = 0
   let best: {id: string; title: string; price: number} | null = null
 
   // Per-module accumulators
@@ -42,8 +47,11 @@ export function computeDashboardMetrics(
   const monthMap = new Map<string, number>()
 
   for (const item of items) {
-    const price = item.purchasePrice ?? 0
-    if (item.purchasePrice != null) {
+    const validPrice = typeof item.purchasePrice === 'number' && Number.isFinite(item.purchasePrice) && item.purchasePrice >= 0
+    const price = validPrice ? item.purchasePrice! : 0
+    if (item.purchasePrice != null && !validPrice) invalidPrices++
+    if (validPrice) {
+      pricedItems++
       totalValue += price
       if (!best || price > best.price) {
         best = {id: item.id, title: item.title, price}
@@ -60,20 +68,21 @@ export function computeDashboardMetrics(
     }
 
     // Month grouping from createdAt (ISO string)
-    const monthKey = item.createdAt ? item.createdAt.substring(0, 7) : 'unknown'
+    const monthKey = /^\d{4}-(0[1-9]|1[0-2])(?:-|$)/.test(item.createdAt || '') ? item.createdAt.substring(0, 7) : 'unknown'
     monthMap.set(monthKey, (monthMap.get(monthKey) ?? 0) + 1)
   }
 
-  // Build module breakdown, sorted by value descending
+  const valueAvailable = Number.isFinite(totalValue)
+  // Build module breakdown by value, or count when no usable total exists.
   let segments: ModuleSegment[] = Array.from(moduleMap.entries())
     .map(([moduleId, data]) => ({
       moduleId,
       moduleName: getModuleName(moduleId),
       totalValue: data.value,
       itemCount: data.count,
-      percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
+      percentage: valueAvailable && totalValue > 0 ? (data.value / totalValue) * 100 : 0,
     }))
-    .sort((a, b) => b.totalValue - a.totalValue)
+    .sort((a, b) => (valueAvailable && totalValue > 0 ? b.totalValue - a.totalValue : b.itemCount - a.itemCount) || a.moduleId.localeCompare(b.moduleId))
 
   // Group smallest into "Other" when more than MAX_SEGMENTS modules
   if (segments.length > MAX_SEGMENTS) {
@@ -86,7 +95,7 @@ export function computeDashboardMetrics(
       moduleName: 'Other',
       totalValue: otherValue,
       itemCount: otherCount,
-      percentage: totalValue > 0 ? (otherValue / totalValue) * 100 : 0,
+      percentage: valueAvailable && totalValue > 0 ? (otherValue / totalValue) * 100 : 0,
     })
     segments = top
   }
@@ -101,7 +110,7 @@ export function computeDashboardMetrics(
       count,
     }))
 
-  return {totalValue, totalItems, mostValuableItem: best, moduleBreakdown: segments, acquisitionTimeline: timeline}
+  return {totalValue, pricedItems, invalidPrices, valueAvailable, totalItems, mostValuableItem: best, moduleBreakdown: segments, acquisitionTimeline: timeline}
 }
 
 function formatMonthLabel(key: string): string {

@@ -8,29 +8,42 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"path/filepath"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 
 	"omnicollect/auth"
+	"omnicollect/mediahttp"
 	"omnicollect/showcase"
 	"omnicollect/storage"
 )
 
 // storeCtxKey is the context key for per-request tenant-scoped stores.
 type storeCtxKey struct{}
+type mediaCtxKey struct{}
+
+func (s *Server) requestMediaStore(r *http.Request) storage.MediaStore {
+	if media, ok := r.Context().Value(mediaCtxKey{}).(storage.MediaStore); ok {
+		return media
+	}
+	return s.app.mediaStore
+}
 
 // requestStore returns the tenant-scoped store for the current request.
 // Falls back to s.app.store if no per-request store is set (local mode).
 func (s *Server) requestStore(r *http.Request) storage.Store {
 	if store, ok := r.Context().Value(storeCtxKey{}).(storage.Store); ok {
-		return store
+		return store.WithContext(r.Context())
 	}
-	return s.app.store
+	return s.app.store.WithContext(r.Context())
 }
 
 // Server wraps the App and provides HTTP routing.
 type Server struct {
-	app *App
-	mux *http.ServeMux
+	app     *App
+	mux     *http.ServeMux
+	imports importSessions
 }
 
 // NewServer creates a server with all routes registered.
@@ -43,9 +56,14 @@ func NewServer(app *App) *Server {
 func (s *Server) registerRoutes() {
 	// Items
 	s.mux.HandleFunc("GET /api/v1/items", s.handleGetItems)
+	s.mux.HandleFunc("GET /api/v1/items/page", s.handleItemPage)
+	s.mux.HandleFunc("GET /api/v1/items/summary", s.handleCollectionSummary)
 	s.mux.HandleFunc("POST /api/v1/items", s.handleSaveItem)
 	s.mux.HandleFunc("DELETE /api/v1/items/{id}", s.handleDeleteItem)
 	s.mux.HandleFunc("POST /api/v1/items/batch-delete", s.handleDeleteItems)
+	s.mux.HandleFunc("GET /api/v1/recovery", s.handleListDeletions)
+	s.mux.HandleFunc("POST /api/v1/recovery/{id}", s.handleRecoverDeletion)
+	s.mux.HandleFunc("DELETE /api/v1/recovery/{id}", s.handleDiscardDeletion)
 	s.mux.HandleFunc("POST /api/v1/items/batch-update-module", s.handleBulkUpdateModule)
 
 	// Tags
@@ -84,30 +102,57 @@ func (s *Server) registerRoutes() {
 	// Health
 	s.mux.HandleFunc("GET /api/v1/health", s.handleHealth)
 
-	// Media file serving: local filesystem or S3 proxy depending on MediaStore type
-	if localStore, ok := s.app.mediaStore.(*storage.LocalMediaStore); ok {
-		// Local mode: serve directly from filesystem
-		mediaBase := localStore.BaseDir()
-		s.mux.Handle("/thumbnails/", http.StripPrefix("/thumbnails/",
-			http.FileServer(http.Dir(filepath.Join(mediaBase, "thumbnails")))))
-		s.mux.Handle("/originals/", http.StripPrefix("/originals/",
-			http.FileServer(http.Dir(filepath.Join(mediaBase, "originals")))))
-	} else {
-		// Cloud mode: proxy from S3
-		s.mux.HandleFunc("/thumbnails/", s.handleMediaProxy("/thumbnails/"))
-		s.mux.HandleFunc("/originals/", s.handleMediaProxy("/originals/"))
-	}
+	s.mux.HandleFunc("GET /originals/{filename}", s.handleMedia("originals"))
+	s.mux.HandleFunc("GET /thumbnails/{filename}", s.handleMedia("thumbnails"))
 }
 
-// corsMiddleware adds CORS headers for development.
+// corsMiddleware permits same-origin requests and explicitly configured frontends.
 func corsMiddleware(next http.Handler) http.Handler {
+	allowed := strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		timeout := 15 * time.Second
+		switch r.URL.Path {
+		case "/api/v1/images/upload", "/api/v1/import/analyze", "/api/v1/import/execute", "/api/v1/export/backup":
+			timeout = 3 * time.Minute
+		case "/api/v1/ai/analyze":
+			timeout = 90 * time.Second
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+		r = r.WithContext(ctx)
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			u, err := url.Parse(origin)
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			ok := err == nil && u.Host == r.Host && u.Scheme == scheme
+			// Wails serves assets and API routes from its own app origin.
+			if err == nil && u.Host == r.Host && (u.Scheme == "wails" || u.Scheme == "wails-asset-server") {
+				ok = true
+			}
+			for _, value := range allowed {
+				if origin == strings.TrimSpace(value) {
+					ok = true
+				}
+			}
+			if !ok {
+				writeError(w, http.StatusForbidden, "origin is not allowed")
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, If-Match")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, ETag")
+		}
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusNoContent)
 			return
+		}
+		if r.URL.Path != "/api/v1/images/upload" && r.URL.Path != "/api/v1/import/analyze" {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -121,6 +166,15 @@ func (s *Server) tenantScopeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenantID := auth.TenantIDFromContext(r.Context())
 		if tenantID != "" {
+			_, cloud := s.app.store.(*storage.PostgresStore)
+			if cloud || s.app.config.IsAuthEnabled() {
+				media, err := s.app.mediaStore.ForTenant(tenantID)
+				if err != nil {
+					writeError(w, http.StatusServiceUnavailable, "media namespace unavailable")
+					return
+				}
+				r = r.WithContext(context.WithValue(r.Context(), mediaCtxKey{}, media))
+			}
 			if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
 				scoped := pgStore.WithTenantSchema(tenantID)
 				ctx := context.WithValue(r.Context(), storeCtxKey{}, storage.Store(scoped))
@@ -140,8 +194,8 @@ func (s *Server) buildHandler() http.Handler {
 	// Build the provisioner for PostgresStore
 	var provisioner auth.TenantProvisioner
 	if pgStore, ok := s.app.store.(*storage.PostgresStore); ok {
-		provisioner = func(tenantID string) error {
-			return pgStore.ProvisionTenant(tenantID)
+		provisioner = func(ctx context.Context, tenantID string) error {
+			return pgStore.WithContext(ctx).(*storage.PostgresStore).ProvisionTenant(tenantID)
 		}
 	}
 
@@ -154,9 +208,9 @@ func (s *Server) buildHandler() http.Handler {
 		jwtMiddleware := auth.NewJWTMiddleware(cfg.AuthIssuer, cfg.AuthAudience, provisioner)
 		protected := jwtMiddleware(inner)
 
-		// Exempt health check, media serving, and OPTIONS from auth
+		// Only health is public; private media requires the same auth as items.
 		authedHandler = auth.ExemptPaths(
-			[]string{"/api/v1/health", "/thumbnails/", "/originals/"},
+			[]string{"/api/v1/health"},
 			protected,
 			inner,
 		)
@@ -168,8 +222,13 @@ func (s *Server) buildHandler() http.Handler {
 
 	// Top-level mux: public showcase route outside auth, everything else through auth
 	topMux := http.NewServeMux()
-	topMux.HandleFunc("GET /showcase/{slug...}", showcase.HandleShowcase(s.app.store))
-	topMux.Handle("/", authedHandler)
+	topMux.HandleFunc("GET /showcase/{slug}", showcase.HandleShowcase(s.app.store))
+	topMux.HandleFunc("GET /showcase/{slug}/media/{kind}/{filename}", showcase.HandleMedia(s.app.store, s.app.mediaStore))
+	topMux.Handle("/api/", authedHandler)
+	topMux.Handle("/thumbnails/", authedHandler)
+	topMux.Handle("/originals/", authedHandler)
+	// The SPA and its login callback must load before a token is available.
+	topMux.Handle("/", s.mux)
 
 	return corsMiddleware(topMux)
 }
@@ -177,18 +236,38 @@ func (s *Server) buildHandler() http.Handler {
 // Start begins listening on the given port. Port 0 picks a random available port.
 // Returns the listener (to get the actual port) and starts serving in a goroutine.
 func (s *Server) Start(port int) (net.Listener, error) {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", fmt.Sprint(port)))
 	if err != nil {
 		return nil, fmt.Errorf("starting server: %w", err)
 	}
 	log.Printf("HTTP server listening on %s", ln.Addr().String())
-	go http.Serve(ln, s.buildHandler())
+	server := s.httpServer("")
+	go func() {
+		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("HTTP server: %v", err)
+		}
+	}()
 	return ln, nil
 }
 
 // ListenAndServe blocks on the given port (for standalone mode).
 func (s *Server) ListenAndServe(port int) error {
-	addr := fmt.Sprintf(":%d", port)
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	addr := net.JoinHostPort(host, fmt.Sprint(port))
 	log.Printf("HTTP server listening on %s", addr)
-	return http.ListenAndServe(addr, s.buildHandler())
+	return s.httpServer(addr).ListenAndServe()
+}
+
+func (s *Server) handleMedia(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		mediahttp.Serve(w, r, s.requestMediaStore(r), kind, r.PathValue("filename"))
+	}
+}
+
+func (s *Server) httpServer(addr string) *http.Server {
+	return &http.Server{Addr: addr, Handler: s.buildHandler(), ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 1 << 20}
 }

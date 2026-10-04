@@ -4,6 +4,7 @@
 
 import {computed, watch, ref} from 'vue'
 import type {Item, ModuleSchema} from '../api/types'
+import {useReducedMotion} from '../composables/reducedMotion'
 import {useDashboardMetrics} from '../composables/useDashboardMetrics'
 import DashboardMetricCard from './DashboardMetricCard.vue'
 import {Chart as ChartJS, ArcElement, DoughnutController, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend} from 'chart.js'
@@ -11,10 +12,13 @@ import {Doughnut, Bar} from 'vue-chartjs'
 
 ChartJS.register(ArcElement, DoughnutController, BarElement, BarController, CategoryScale, LinearScale, Tooltip, Legend)
 
+const reducedMotion = useReducedMotion()
+
 const props = defineProps<{
   items: Item[]
   modules: ModuleSchema[]
   dark: boolean
+  filtered?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -61,7 +65,7 @@ watch(() => props.dark, () => {
 })
 
 // Doughnut chart data: show value breakdown when prices exist, item count otherwise
-const useCountFallback = computed(() => metrics.value.totalValue === 0)
+const useCountFallback = computed(() => !metrics.value.valueAvailable || metrics.value.totalValue === 0)
 
 const doughnutData = computed(() => {
   const breakdown = metrics.value.moduleBreakdown
@@ -77,6 +81,7 @@ const doughnutData = computed(() => {
 })
 
 const doughnutOptions = computed(() => ({
+  animation: reducedMotion.value ? false as const : {duration: 400},
   responsive: true,
   maintainAspectRatio: false,
   cutout: '60%',
@@ -128,6 +133,7 @@ const barData = computed(() => {
 })
 
 const barOptions = computed(() => ({
+  animation: reducedMotion.value ? false as const : {duration: 400},
   responsive: true,
   maintainAspectRatio: false,
   plugins: {
@@ -164,19 +170,21 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
 
 <template>
   <div class="dashboard">
+    <p role="status">{{ filtered ? 'Insights for the current filtered page.' : 'Insights for the current page.' }} Figures are not independent collection-wide totals or market valuations.</p>
+    <p v-if="!metrics.valueAvailable || metrics.invalidPrices" role="alert">Some price data cannot be summarized. Invalid prices are excluded; an overflowing total is unavailable.</p>
     <div class="dashboard-cards">
       <DashboardMetricCard
-        label="Total Collection Value"
-        :value="formatCurrency(metrics.totalValue)"
-        :subtitle="hasItems ? `across ${metrics.totalItems} items` : undefined"
+        label="Recorded purchase total"
+        :value="!metrics.valueAvailable ? 'Unavailable' : metrics.pricedItems ? formatCurrency(metrics.totalValue) : '—'"
+        :subtitle="`${metrics.pricedItems} of ${metrics.totalItems} loaded items have valid prices`"
       />
       <DashboardMetricCard
-        label="Total Items"
+        label="Loaded items"
         :value="metrics.totalItems.toLocaleString()"
       />
       <DashboardMetricCard
         v-if="metrics.mostValuableItem"
-        label="Most Valuable Item"
+        label="Highest recorded purchase price"
         :value="formatCurrency(metrics.mostValuableItem.price)"
         :subtitle="metrics.mostValuableItem.title"
         :clickable="true"
@@ -184,7 +192,7 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
       />
       <DashboardMetricCard
         v-else
-        label="Most Valuable Item"
+        label="Highest recorded purchase price"
         value="--"
         subtitle="No prices recorded"
       />
@@ -202,7 +210,7 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
       </div>
 
       <div class="chart-card">
-        <h3 class="chart-title">Acquisitions Over Time</h3>
+        <h3 class="chart-title">Items Added by Month</h3>
         <div v-if="hasTimeline" class="chart-container bar-container">
           <Bar :data="barData" :options="barOptions" />
         </div>
@@ -213,7 +221,7 @@ const hasTimeline = computed(() => metrics.value.acquisitionTimeline.length > 0)
     </div>
 
     <div v-else class="dashboard-empty">
-      <p class="dashboard-empty-text">Add items to see your collection insights</p>
+      <p class="dashboard-empty-text">{{ filtered ? 'No items match the current search or filters.' : 'No items loaded. Add items to see insights.' }}</p>
     </div>
   </div>
 </template>

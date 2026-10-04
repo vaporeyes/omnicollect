@@ -9,7 +9,7 @@ import (
 
 // AIProvider abstracts a vision model that can analyze an image and return text.
 type AIProvider interface {
-	AnalyzeImage(ctx context.Context, imageBase64 string, prompt string) (string, error)
+	AnalyzeImage(ctx context.Context, imageBase64 string, mediaType string, prompt string) (string, error)
 }
 
 // AIConfig holds the configuration for an AI provider.

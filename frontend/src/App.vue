@@ -1,6 +1,7 @@
 <script lang="ts" setup>
-import {ref, computed, nextTick, onMounted, onUnmounted} from 'vue'
+import {ref, computed, nextTick, onMounted, onUnmounted, watch} from 'vue'
 import * as api from './api/client'
+import {lazyComponent} from './composables/lazyComponent'
 import type {Item, ModuleSchema, BulkDeleteResult, BulkUpdateResult, TagCount} from './api/types'
 import {applyTheme, DEFAULT_CONFIG, type ThemeConfig} from './theme'
 import {useModuleStore} from './stores/moduleStore'
@@ -9,75 +10,122 @@ import {useToastStore} from './stores/toastStore'
 import {useSelectionStore} from './stores/selectionStore'
 import {useSmartFolderStore, type SmartFolder} from './stores/smartFolderStore'
 import AppSidebar from './components/AppSidebar.vue'
-import DynamicForm from './components/DynamicForm.vue'
+const DynamicForm = lazyComponent(() => import('./components/DynamicForm.vue'))
+import {draftAtRisk, mayLeaveDraft} from './composables/draftGuard'
 import ItemList from './components/ItemList.vue'
 import CollectionGrid from './components/CollectionGrid.vue'
 import ImageLightbox from './components/ImageLightbox.vue'
-import SchemaBuilder from './components/SchemaBuilder.vue'
-import ItemDetail from './components/ItemDetail.vue'
-import SettingsPage from './components/SettingsPage.vue'
+const SchemaBuilder = lazyComponent(() => import('./components/SchemaBuilder.vue'))
+const ItemDetail = lazyComponent(() => import('./components/ItemDetail.vue'))
+const SettingsPage = lazyComponent(() => import('./components/SettingsPage.vue'))
 import ToastProvider from './components/ToastProvider.vue'
 import FilterBar from './components/FilterBar.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import type {MenuOption} from './components/ContextMenu.vue'
 import BulkActionBar from './components/BulkActionBar.vue'
+import DeleteConfirmation from './components/DeleteConfirmation.vue'
+import RecoveryDialog from './components/RecoveryDialog.vue'
+import CollectionPaging from './components/CollectionPaging.vue'
+import CollectionSummary from './components/CollectionSummary.vue'
+import {useSummaryStore} from './stores/summaryStore'
 import TagFilter from './components/TagFilter.vue'
 import TagManager from './components/TagManager.vue'
+import ActionConfirmation from './components/ActionConfirmation.vue'
+import ModalSurface from './components/ModalSurface.vue'
 import ImportDialog from './components/ImportDialog.vue'
-import DashboardView from './components/DashboardView.vue'
-import ComparisonView from './components/ComparisonView.vue'
+const DashboardView = lazyComponent(() => import('./components/DashboardView.vue'))
+const ComparisonView = lazyComponent(() => import('./components/ComparisonView.vue'))
 import {isAuthConfigured} from './auth/plugin'
-import {AuthGuard} from './auth/guard'
+import {beginSignOut, sessionFailure, captureSession} from './auth/session'
 import {useAuth0} from '@auth0/auth0-vue'
 
 const moduleStore = useModuleStore()
 const collectionStore = useCollectionStore()
+const summaryStore = useSummaryStore()
 const toastStore = useToastStore()
 const selectionStore = useSelectionStore()
 const smartFolderStore = useSmartFolderStore()
+const settingsLoading = ref(false)
+const settingsError = ref('')
+const collectionAvailable = computed(() => collectionStore.loaded && moduleStore.loaded && !collectionStore.loading && !moduleStore.loading && !collectionStore.error && !moduleStore.error)
+const resultsFiltered = computed(() => !!(collectionStore.searchQuery.trim() || collectionStore.activeTags.length || Object.keys(collectionStore.activeFilters).length))
 
 // Auth
 const authEnabled = isAuthConfigured
 const auth0 = authEnabled ? useAuth0() : null
-function onSignOut() {
-  auth0?.logout({logoutParams: {returnTo: window.location.origin}})
+async function onSignOut() {
+  if (!auth0 || !canLeaveDraft()) return
+  beginSignOut()
+  try {await auth0.logout({logoutParams: {returnTo: window.location.origin}})}
+  catch {sessionFailure.value = 'Sign out could not complete. Reload before continuing.'}
 }
+const owner = captureSession()
+function currentSession() {try {owner.assertCurrent(); return true} catch {return false}}
 
 // Tag state
 const allTags = ref<TagCount[]>([])
 const showTagManager = ref(false)
+const tagManagerRef = ref<InstanceType<typeof TagManager> | null>(null)
+const tagLoadError = ref('')
+const mutation = ref<{title: string; description: string; label: string; run: () => Promise<string>; success?: () => void} | null>(null)
+const mutationUncertain = ref(false)
+function reloadPage() {window.location.reload()}
 
 async function refreshTags() {
-  try { allTags.value = await api.getAllTags() } catch { /* ignore */ }
+  if (!currentSession()) return false
+  try {const tags = await api.getAllTags(); if (!currentSession()) return false; allTags.value = tags; tagLoadError.value = ''; return true}
+  catch {if (currentSession()) tagLoadError.value = 'Tags could not be loaded. Counts may be out of date.'; return false}
 }
 
-async function onTagRename(payload: {oldName: string, newName: string}) {
-  try {
-    await api.renameTag(payload.oldName, payload.newName)
-    await refreshTags()
-    await collectionStore.fetchItems()
-    toastStore.show(`Tag renamed to "${payload.newName}"`, 'success')
-  } catch (e: any) {
-    toastStore.show(`Rename failed: ${e?.message ?? e}`, 'error')
+function onTagRename(payload: {oldName: string, newName: string}) {
+  if (mutation.value || mutationUncertain.value) return
+  const {oldName, newName} = payload
+  const merge = allTags.value.some(tag => tag.name === newName)
+  mutation.value = {
+    title: merge ? 'Merge tags?' : 'Rename tag?',
+    description: `Change "${oldName}" to "${newName}" on all matching items in every collection. ${merge ? 'The destination already exists: both tags will be merged. This cannot be automatically undone.' : 'Saved-view tag filters are not renamed.'}`,
+    label: merge ? 'Merge tags' : 'Rename tag',
+    run: async () => {await api.renameTag(oldName, newName); return 'Tag change saved.'},
+    success: () => {tagManagerRef.value?.cancelEdit(); collectionStore.activeTags = [...new Set(collectionStore.activeTags.map(tag => tag === oldName ? newName : tag))]},
   }
 }
 
-async function onTagDelete(name: string) {
-  try {
-    await api.deleteTag(name)
-    await refreshTags()
-    await collectionStore.fetchItems()
-    toastStore.show(`Tag "${name}" deleted`, 'success')
-  } catch (e: any) {
-    toastStore.show(`Delete failed: ${e?.message ?? e}`, 'error')
+function onTagDelete(name: string) {
+  if (mutation.value || mutationUncertain.value) return
+  mutation.value = {
+    title: `Delete tag "${name}"?`,
+    description: 'Remove this tag from every item in every collection. Items will not be deleted. There is no automatic Undo; export a backup first if you may need these tag assignments.',
+    label: 'Delete tag',
+    run: async () => {await api.deleteTag(name); return 'Tag removed.'},
+    success: () => {collectionStore.activeTags = collectionStore.activeTags.filter(tag => tag !== name)},
   }
+}
+
+async function onMutationConfirmed(message: string) {
+  mutation.value?.success?.()
+  mutation.value = null
+  selectionStore.clear()
+  const [itemsOK, tagsOK, summaryOK] = await Promise.all([collectionStore.fetchItems(), refreshTags(), summaryStore.refresh()])
+  toastStore.show(itemsOK && tagsOK && summaryOK ? message : message + ' The view could not fully refresh. Reload; do not repeat the change.', itemsOK && tagsOK && summaryOK ? 'success' : 'error')
 }
 
 // Bulk action state
 const showBulkDeleteConfirm = ref(false)
+const showRecovery = ref(false)
+function openRecovery() {
+ if (!canLeaveDraft()) return
+ showForm.value = false
+ showRecovery.value = true
+}
+async function refreshRecoveryCollection() {
+ const [refreshed, tagsRefreshed, summaryOK] = await Promise.all([collectionStore.fetchItems(), refreshTags(), summaryStore.refresh()])
+ if (!refreshed || !tagsRefreshed || !summaryOK) throw new Error('Items, tags or totals could not be refreshed')
+}
+const deleteTargets = ref<{id: string; title: string}[]>([])
 const showBulkModuleDialog = ref(false)
 const bulkTargetModuleId = ref('')
+const bulkTargets = ref<{id: string; title: string}[]>([])
 
 // Theme
 const themeConfig = ref<ThemeConfig>(JSON.parse(JSON.stringify(DEFAULT_CONFIG)))
@@ -112,6 +160,48 @@ const editingItem = ref<Item | null>(null)
 const viewingItem = ref<Item | null>(null)
 const viewingSchema = ref<ModuleSchema | null>(null)
 const showForm = ref(false)
+const formRef = ref<InstanceType<typeof DynamicForm> | null>(null)
+const editorKey = ref(0)
+const savingItem = ref(false)
+
+const builderRef = ref<InstanceType<typeof SchemaBuilder> | null>(null)
+const settingsRef = ref<InstanceType<typeof SettingsPage> | null>(null)
+const builderKey = ref(0)
+const settingsKey = ref(0)
+function canLeaveDraft(): boolean {
+  if (showRecovery.value || mutation.value || showBulkModuleDialog.value) return false
+  if (showTagManager.value && tagManagerRef.value?.canLeave() === false) return false
+  if (showSettings.value) {
+    if (settingsRef.value?.canLeave() === false) return false
+    showSettings.value = false
+  }
+  if (showBuilder.value) {
+    if (builderRef.value?.canLeave() === false) return false
+    showBuilder.value = false
+  }
+  if (!showForm.value) return true
+  if (savingItem.value || formRef.value?.submitting) {
+    toastStore.show('Wait for the save to finish before leaving.', 'info')
+    return false
+  }
+  return mayLeaveDraft({dirty: !!formRef.value?.dirty, working: !!formRef.value?.working, submitting: savingItem.value},
+    () => window.confirm('Discard this unsaved draft and any pending image work?'))
+}
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (showForm.value && draftAtRisk({dirty: !!formRef.value?.dirty, working: !!formRef.value?.working, submitting: savingItem.value})) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
+onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload))
+function openImport() {
+  if (settingsLoading.value || smartFolderStore.saving) {toastStore.show('Wait for settings to finish before importing.', 'info'); return}
+  if (!canLeaveDraft()) return
+  importRefreshError.value = ''
+  showForm.value = false
+  showImportDialog.value = true
+}
 const showDetail = ref(false)
 const viewMode = ref<'list' | 'grid'>('grid')
 const showDashboard = ref(true)
@@ -162,6 +252,9 @@ const sfCtxOptions: MenuOption[] = [
 
 // Import/export
 const showImportDialog = ref(false)
+const importRefreshError = ref('')
+const importRefreshing = ref(false)
+const importRef = ref<InstanceType<typeof ImportDialog> | null>(null)
 const exporting = ref(false)
 
 // --- Handlers ---
@@ -179,6 +272,8 @@ function onCtxSelect(action: string) {
   if (action === 'view') {
     onItemSelect(item)
   } else if (action === 'edit') {
+    if (!canLeaveDraft()) return
+    editorKey.value++
     const schema = moduleStore.getModuleById(item.moduleId)
     if (!schema) {
       toastStore.show(`Schema not available for "${item.moduleId}"`, 'error')
@@ -196,24 +291,19 @@ function onCtxSelect(action: string) {
   }
 }
 
-async function onDeleteItem(item: Item) {
-  const title = item.title
-  try {
-    await collectionStore.deleteItem(item.id)
-    if (viewingItem.value?.id === item.id) {
-      showDetail.value = false
-      viewingItem.value = null
-      viewingSchema.value = null
-    }
-    toastStore.show(`"${title}" deleted`, 'success')
-  } catch {
-    toastStore.show(collectionStore.error ?? 'Failed to delete item', 'error')
-  }
+function requestDeletion(items: Item[]) {
+  if (showBulkDeleteConfirm.value || !items.length || !canLeaveDraft()) return
+  if (items.length > 500) {toastStore.show('Select at most 500 items per deletion.', 'error'); return}
+  deleteTargets.value = items.map(({id, title}) => ({id, title}))
+  showBulkDeleteConfirm.value = true
 }
+function onDeleteItem(item: Item) {requestDeletion([item])}
 
 // Keyboard shortcuts
 function onGlobalKeydown(e: KeyboardEvent) {
+  if (showRecovery.value || showBulkDeleteConfirm.value || mutation.value || showBulkModuleDialog.value) return
   const mod = e.metaKey || e.ctrlKey
+  if (showImportDialog.value && e.key !== 'Escape') return
 
   if (mod && e.key === 'k') {
     e.preventDefault()
@@ -222,21 +312,22 @@ function onGlobalKeydown(e: KeyboardEvent) {
   }
 
   if (e.key === 'Escape') {
-    if (showImportDialog.value) { showImportDialog.value = false; return }
+    if (showImportDialog.value) { importRef.value?.requestClose(); return }
     if (showPalette.value) { showPalette.value = false; return }
     if (showComparison.value) { onCloseComparison(); return }
     if (lightboxVisible.value) { lightboxVisible.value = false; return }
     if (ctxVisible.value) { ctxVisible.value = false; return }
     if (showForm.value) { onCancel(); return }
     if (showDetail.value) { onCloseDetail(); return }
-    if (showTagManager.value) { showTagManager.value = false; return }
-    if (showBuilder.value) { showBuilder.value = false; return }
+    if (showTagManager.value) { if (canLeaveDraft()) showTagManager.value = false; return }
+    if (showBuilder.value) { canLeaveDraft(); return }
     if (showSettings.value) { onSettingsClose(); return }
     return
   }
 
   if (mod && e.key === 'f') {
     e.preventDefault()
+    if (!canLeaveDraft()) return
     showForm.value = false
     showDetail.value = false
     showBuilder.value = false
@@ -259,27 +350,45 @@ function onGlobalKeydown(e: KeyboardEvent) {
   }
 }
 
-onMounted(async () => {
-  document.addEventListener('keydown', onGlobalKeydown)
+onMounted(() => document.addEventListener('keydown', onGlobalKeydown))
 
+async function loadSettings(): Promise<boolean> {
+  if (settingsLoading.value || smartFolderStore.saving || !currentSession()) return false
+  settingsLoading.value = true
+  settingsError.value = ''
+  smartFolderStore.invalidateBaseline()
   try {
     const settings = await api.get<any>('/api/v1/settings')
-    if (settings?.theme) {
-      themeConfig.value = {...DEFAULT_CONFIG, ...settings.theme}
-      refreshTheme()
+    if (!currentSession()) return false
+    if (!smartFolderStore.loadFromSettings(settings)) throw new Error('Stored saved views are invalid')
+    if (settings.theme && !['light', 'dark', 'system'].includes(settings.theme.mode)) throw new Error('Stored appearance is invalid')
+    themeConfig.value = settings.theme ? {...DEFAULT_CONFIG, ...settings.theme} : {...DEFAULT_CONFIG}
+    refreshTheme()
+    return true
+  } catch (e: any) {
+    if (currentSession()) {
+      smartFolderStore.invalidateBaseline()
+      settingsError.value = 'Settings could not be loaded. Edits are disabled until retry succeeds. ' + (e?.message || '')
     }
-    smartFolderStore.loadFromSettings(settings)
-  } catch { /* use defaults */ }
-
+    return false
+  } finally {settingsLoading.value = false}
+}
+async function loadInitialData() {
+  await loadSettings()
+  if (!currentSession()) return
   await Promise.all([
     moduleStore.fetchModules(),
+    summaryStore.refresh(),
     collectionStore.fetchItems(),
     refreshTags(),
   ])
-})
+}
+
+onMounted(loadInitialData)
 
 // Sidebar navigation: clicking a module filters the view (does NOT open form)
 function onNavigate(moduleId: string) {
+  if (!canLeaveDraft()) return
   selectionStore.clear()
   smartFolderStore.clearActive()
   collectionStore.setFilter(moduleId)
@@ -296,6 +405,8 @@ function onNavigate(moduleId: string) {
 
 // Explicit new item action (from sidebar + button or Cmd+N)
 function onNewItem(mod: ModuleSchema) {
+  if (!canLeaveDraft()) return
+  editorKey.value++
   selectionStore.clear()
   selectedSchema.value = mod
   editingItem.value = null
@@ -306,6 +417,7 @@ function onNewItem(mod: ModuleSchema) {
 }
 
 function onItemSelect(item: Item) {
+  if (!canLeaveDraft()) return
   selectionStore.clear()
   const schema = moduleStore.getModuleById(item.moduleId)
   viewingItem.value = item
@@ -316,6 +428,8 @@ function onItemSelect(item: Item) {
 }
 
 function onEditFromDetail() {
+  if (!canLeaveDraft()) return
+  editorKey.value++
   if (!viewingItem.value) return
   const schema = viewingSchema.value
   if (!schema) {
@@ -344,7 +458,9 @@ function onDetailViewImage(filename: string) {
   lightboxVisible.value = true
 }
 
-async function onSave(item: Item) {
+async function onSave(item: Item): Promise<boolean> {
+  if (savingItem.value) return false
+  savingItem.value = true
   try {
     const saved = await collectionStore.saveItem(item)
     showForm.value = false
@@ -354,11 +470,13 @@ async function onSave(item: Item) {
       viewingSchema.value = moduleStore.getModuleById(saved.moduleId) ?? null
       showDetail.value = true
       toastStore.show('Item saved', 'success')
+      void summaryStore.refresh()
       refreshTags()
     }
-  } catch {
-    toastStore.show(collectionStore.error ?? 'Failed to save item', 'error')
+  } finally {
+    savingItem.value = false
   }
+  return true
 }
 
 function onDeleteFromDetail() {
@@ -367,6 +485,7 @@ function onDeleteFromDetail() {
 }
 
 function onCancel() {
+  if (!canLeaveDraft()) return
   showForm.value = false
   editingItem.value = null
   if (viewingItem.value) showDetail.value = true
@@ -383,6 +502,8 @@ function onAddFirstItem() {
 
 // Smart Folder handlers
 function onSmartFolderApply(folder: SmartFolder) {
+  if (!canLeaveDraft()) return
+  smartFolderStore.setActive(folder.id)
   if (folder.moduleId && !moduleStore.getModuleById(folder.moduleId)) {
     toastStore.show('Module no longer exists. Showing all items.', 'info')
     collectionStore.activeModuleId = ''
@@ -414,15 +535,27 @@ function onSfCtxSelect(action: string) {
   if (action === 'rename') {
     sidebarRef.value?.startRename(folder.id)
   } else if (action === 'delete') {
-    smartFolderStore.remove(folder.id)
-    toastStore.show(`"${folder.name}" deleted`, 'success')
+    if (mutation.value || mutationUncertain.value || smartFolderStore.saving || !canLeaveDraft()) return
+    const id = folder.id
+    mutation.value = {
+      title: `Delete saved view "${folder.name}"?`,
+      description: 'Only this saved view is removed. Your collection items are not deleted. There is no automatic Undo.',
+      label: 'Delete saved view',
+      run: async () => {await smartFolderStore.removePersisted(id); return 'Saved view deleted.'},
+    }
   }
 }
 
 // Search (from ItemList)
+function clearResultFilters() {
+  smartFolderStore.clearActive()
+  collectionStore.activeFilters = {}
+  collectionStore.activeTags = []
+  collectionStore.setSearch('')
+}
 function onSearch(query: string) {
   smartFolderStore.clearActive()
-  collectionStore.setSearch(query)
+  collectionStore.setSearch(query, 300)
 }
 
 // Command palette
@@ -449,22 +582,29 @@ function onPaletteAction(action: string) {
   } else if (action === 'exportBackup') {
     onExportBackup()
   } else if (action === 'importBackup') {
-    showImportDialog.value = true
+    openImport()
   }
 }
 
 // Bulk actions
-async function onBulkDelete() {
-  const ids = selectionStore.selectedIdArray()
-  try {
-    const result = await api.post<BulkDeleteResult>('/api/v1/items/batch-delete', {ids})
-    selectionStore.clear()
-    await collectionStore.fetchItems()
-    toastStore.show(`${result.deleted} item${result.deleted === 1 ? '' : 's'} deleted`, 'success')
-  } catch (e: any) {
-    toastStore.show(`Bulk delete failed: ${e?.message ?? e}`, 'error')
-  }
+function onBulkDelete() {
+  const ids = new Set(selectionStore.selectedIdArray())
+  requestDeletion(collectionStore.items.filter(item => ids.has(item.id)))
+}
+async function removeConfirmed(ids: string[]): Promise<number> {
+  const result = await api.post<BulkDeleteResult>('/api/v1/items/batch-delete', {ids})
+  return result.deleted
+}
+async function onDeleted(count: number, ids: string[]) {
   showBulkDeleteConfirm.value = false
+  deleteTargets.value = []
+  collectionStore.items = collectionStore.items.filter(item => !ids.includes(item.id))
+  selectionStore.prune(collectionStore.items)
+  if (viewingItem.value && ids.includes(viewingItem.value.id)) onCloseDetail()
+  const outcomes = await Promise.all([collectionStore.fetchItems(), refreshTags(), summaryStore.refresh()])
+  const refreshed = outcomes.every(Boolean)
+  toastStore.show(refreshed ? `${count} item(s) deleted. Undo from Deletion recovery in the sidebar.` : `${count} item(s) deleted, but the view could not refresh.`,
+    refreshed ? 'success' : 'error')
 }
 
 async function onBulkExportCSV() {
@@ -477,22 +617,33 @@ async function onBulkExportCSV() {
   }
 }
 
-async function onBulkUpdateModule() {
-  if (!bulkTargetModuleId.value) return
+function openBulkModule() {
+  if (mutationUncertain.value || !canLeaveDraft()) return
   const ids = selectionStore.selectedIdArray()
-  try {
-    const result = await api.post<BulkUpdateResult>('/api/v1/items/batch-update-module', {ids, newModuleId: bulkTargetModuleId.value})
-    selectionStore.clear()
-    await collectionStore.fetchItems()
-    toastStore.show(`${result.updated} item${result.updated === 1 ? '' : 's'} moved`, 'success')
-  } catch (e: any) {
-    toastStore.show(`Module update failed: ${e?.message ?? e}`, 'error')
-  }
-  showBulkModuleDialog.value = false
+  if (!ids.length || ids.length > 500) {toastStore.show('Select 1–500 items per move.', 'error'); return}
+  const items = collectionStore.items.filter(item => ids.includes(item.id))
+  if (items.length !== ids.length) {toastStore.show('Selection is out of date. Refresh before moving.', 'error'); return}
+  bulkTargets.value = items.map(({id, title}) => ({id, title}))
   bulkTargetModuleId.value = ''
+  showBulkModuleDialog.value = true
+}
+function onBulkUpdateModule() {
+  const target = moduleStore.modules.find(module => module.id === bulkTargetModuleId.value)
+  if (!target || mutationUncertain.value) return
+  const ids = bulkTargets.value.map(item => item.id)
+  const newModuleId = target.id
+  showBulkModuleDialog.value = false
+  mutation.value = {
+    title: `Move ${ids.length} item(s) to ${target.displayName}?`,
+    description: `Selected when this dialog opened: ${bulkTargets.value.slice(0, 5).map(item => item.title).join(', ')}${ids.length > 5 ? ', and more' : ''}. Existing attributes are retained. Incompatible items reject the entire move; there is no automatic Undo. Export a backup first if needed.`,
+    label: 'Move items',
+    run: async () => {const result = await api.post<BulkUpdateResult>('/api/v1/items/batch-update-module', {ids, newModuleId}); return `${result.updated} item(s) moved.`},
+  }
 }
 
 function onCompare() {
+  if (!canLeaveDraft()) return
+  showForm.value = false
   const ids = selectionStore.selectedIdArray()
   if (ids.length !== 2) return
   const a = collectionStore.items.find(i => i.id === ids[0])
@@ -508,13 +659,23 @@ function onCloseComparison() {
 }
 
 async function onImported() {
-  showImportDialog.value = false
-  await Promise.all([
-    moduleStore.fetchModules(),
-    collectionStore.fetchItems(),
-    refreshTags(),
-  ])
-  toastStore.show('Backup imported successfully', 'success')
+  // Keep committed counts visible; retrying this refresh never repeats restore.
+  if (importRefreshing.value) return
+  importRefreshing.value = true
+  importRefreshError.value = ''
+  selectionStore.clear()
+  try {
+    const [, refreshed, tagsOK, settingsOK, summaryOK] = await Promise.all([
+      moduleStore.fetchModules(), collectionStore.fetchItems(), refreshTags(), loadSettings(), summaryStore.refresh(),
+    ])
+    if (!refreshed || moduleStore.error || !tagsOK || !settingsOK || !summaryOK) {
+      importRefreshError.value = 'The backup was imported, but the collection view could not refresh.'
+    }
+  } catch {
+    importRefreshError.value = 'The backup was imported, but the collection view could not refresh.'
+  } finally {
+    importRefreshing.value = false
+  }
 }
 
 async function onExportBackup() {
@@ -531,6 +692,8 @@ async function onExportBackup() {
 
 // Schema builder
 function openNewSchemaBuilder() {
+  if (!canLeaveDraft()) return
+  builderKey.value++
   builderModuleId.value = null
   builderInitialJSON.value = null
   showBuilder.value = true
@@ -540,6 +703,9 @@ function openNewSchemaBuilder() {
 async function openEditSchemaBuilder(mod: ModuleSchema) {
   try {
     const data = await api.get<any>('/api/v1/modules/' + mod.id + '/file')
+    if (!currentSession()) return
+    if (!canLeaveDraft()) return
+    builderKey.value++
     builderModuleId.value = mod.id
     builderInitialJSON.value = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
     showBuilder.value = true
@@ -555,6 +721,7 @@ async function onBuilderSaved() {
 }
 
 function openTagManager() {
+  if (!canLeaveDraft()) return
   selectionStore.clear()
   showTagManager.value = true
   showForm.value = false
@@ -565,6 +732,9 @@ function openTagManager() {
 }
 
 function openSettings() {
+  if (settingsLoading.value || settingsError.value || !smartFolderStore.baselineReady) {toastStore.show('Load settings successfully before editing appearance.', 'info'); return}
+  if (!canLeaveDraft()) return
+  settingsKey.value++
   selectionStore.clear()
   showSettings.value = true
   showForm.value = false
@@ -578,13 +748,14 @@ function onSettingsSaved(config: ThemeConfig) {
 }
 
 function onSettingsClose() {
+  if (!canLeaveDraft()) return
   refreshTheme()
   showSettings.value = false
 }
 </script>
 
 <template>
-  <component :is="authEnabled ? AuthGuard : 'div'">
+  <div>
   <div class="app-layout">
     <AppSidebar
       ref="sidebarRef"
@@ -597,43 +768,60 @@ function onSettingsClose() {
       @applySmartFolder="onSmartFolderApply"
       @smartFolderContextMenu="onSmartFolderContextMenu"
       @exportBackup="onExportBackup"
-      @importBackup="showImportDialog = true"
+      @importBackup="openImport"
+      @openRecovery="openRecovery"
       @openTags="openTagManager"
       @openSettings="openSettings"
       @signOut="onSignOut"
     />
 
-    <main class="main-content">
-      <div v-if="moduleStore.loading || collectionStore.loading" class="loading">
+    <main class="main-content" :class="{'has-selection': collectionAvailable && selectionStore.count > 0}">
+      <p v-if="mutationUncertain" role="alert">A change was not confirmed. Reload to inspect the result before more tag, saved-view deletion or move operations. <button @click="reloadPage">Reload</button></p>
+      <p v-if="settingsLoading" role="status">Loading settings…</p>
+      <p v-else-if="settingsError" role="alert">{{ settingsError }} <button @click="loadSettings">Retry settings</button></p>
+      <div v-if="moduleStore.loading || collectionStore.loading || (!collectionStore.loaded && !collectionStore.error)" class="loading" role="status">
         Loading...
       </div>
 
-      <div v-if="collectionStore.error" class="error-message">
-        {{ collectionStore.error }}
+      <div v-if="collectionStore.error" role="alert" class="error-message">
+        Collection results unavailable: {{ collectionStore.error }}
+        <button :disabled="collectionStore.loading" @click="collectionStore.fetchItems()">Retry items</button>
+      </div>
+      <div v-if="moduleStore.error" role="alert" class="error-message">
+        Collection types unavailable: {{ moduleStore.error }}
+        <button :disabled="moduleStore.loading" @click="moduleStore.fetchModules()">Retry collection types</button>
       </div>
 
       <Transition name="fade-slide" mode="out-in">
         <SettingsPage
+          ref="settingsRef"
+          :key="settingsKey"
           v-if="showSettings"
           :initialConfig="themeConfig"
           :systemDark="systemDark"
           @saved="onSettingsSaved"
-          @close="onSettingsClose"
+          @close="showSettings = false"
         />
       </Transition>
 
       <Transition name="fade-slide" mode="out-in">
         <TagManager
           v-if="showTagManager && !showSettings"
+          ref="tagManagerRef"
           :tags="allTags"
+          :disabled="mutationUncertain"
+          :load-error="tagLoadError"
+          @reload="refreshTags"
           @rename="onTagRename"
           @delete="onTagDelete"
-          @close="showTagManager = false"
+          @close="() => {if (canLeaveDraft()) showTagManager = false}"
         />
       </Transition>
 
       <Transition name="fade-slide" mode="out-in">
         <SchemaBuilder
+          ref="builderRef"
+          :key="builderKey"
           v-if="showBuilder && !showSettings && !showTagManager"
           :moduleId="builderModuleId"
           :initialJSON="builderInitialJSON"
@@ -644,10 +832,12 @@ function onSettingsClose() {
 
       <Transition name="fade-slide" mode="out-in">
         <DynamicForm
+          ref="formRef"
+          :key="editorKey"
           v-if="showForm && selectedSchema && !showBuilder && !showSettings && !showTagManager"
           :schema="selectedSchema"
           :item="editingItem"
-          @save="onSave"
+          :save-item="onSave"
           @cancel="onCancel"
         />
       </Transition>
@@ -697,6 +887,8 @@ function onSettingsClose() {
           >Grid</button>
         </div>
 
+        <CollectionSummary />
+        <CollectionPaging />
         <FilterBar
           :schema="activeFilterSchema"
           :filters="collectionStore.activeFilters"
@@ -710,28 +902,33 @@ function onSettingsClose() {
           @update="(t: string[]) => { smartFolderStore.clearActive(); collectionStore.setTags(t) }"
         />
 
-        <div v-if="collectionStore.items.length === 0 && Object.keys(collectionStore.activeFilters).length > 0" class="filtered-empty">
-          No items match the active filters.
-          <button class="filtered-empty-clear" @click="collectionStore.clearFilters">Clear filters</button>
+        <div v-if="collectionAvailable && resultsFiltered" class="filtered-empty">
+          <span v-if="collectionStore.items.length === 0 && collectionStore.offset === 0">No items match the current search or filters.</span>
+          <span v-if="collectionStore.searchQuery">Search: “{{ collectionStore.searchQuery }}”</span>
+          <button class="filtered-empty-clear" @click="clearResultFilters">Clear search and filters</button>
         </div>
 
-        <Transition name="fade-slide" mode="out-in">
+        <Transition v-if="collectionStore.offset === 0 || collectionStore.items.length > 0 || !collectionAvailable" name="fade-slide" mode="out-in">
           <DashboardView
-            v-if="showDashboard && !collectionStore.activeModuleId"
+            v-if="showDashboard && !collectionStore.activeModuleId && collectionAvailable"
             key="dashboard"
             :items="collectionStore.items"
             :modules="moduleStore.modules"
             :dark="getEffectiveDark()"
+            :filtered="resultsFiltered"
             @selectItem="onDashboardSelectItem"
           />
 
           <ItemList
-            v-else-if="viewMode === 'list'"
+            v-else-if="(!showDashboard || !!collectionStore.activeModuleId) && viewMode === 'list'"
             key="list"
             ref="itemListRef"
             :items="collectionStore.items"
             :modules="moduleStore.modules"
             :activeModuleId="collectionStore.activeModuleId"
+            :search-query="collectionStore.searchQuery"
+            :unavailable="!collectionAvailable"
+            :filtered="resultsFiltered"
             @select="onItemSelect"
             @filterChange="onNavigate"
             @search="onSearch"
@@ -740,8 +937,10 @@ function onSettingsClose() {
           />
 
           <CollectionGrid
-            v-else-if="viewMode === 'grid'"
+            v-else-if="(!showDashboard || !!collectionStore.activeModuleId) && viewMode === 'grid'"
             key="grid"
+            :unavailable="!collectionAvailable"
+            :filtered="resultsFiltered"
             :items="collectionStore.items"
             :modules="moduleStore.modules"
             @select="onItemSelect"
@@ -760,46 +959,48 @@ function onSettingsClose() {
     </main>
 
     <BulkActionBar
+      v-if="collectionAvailable"
       :count="selectionStore.count"
-      @delete="showBulkDeleteConfirm = true"
+      @delete="onBulkDelete"
       @export="onBulkExportCSV"
-      @editModule="showBulkModuleDialog = true; bulkTargetModuleId = ''"
+      @editModule="openBulkModule"
       @deselectAll="selectionStore.clear()"
       @compare="onCompare"
     />
 
-    <!-- Bulk delete confirmation -->
-    <Teleport to="body">
-      <div v-if="showBulkDeleteConfirm" class="confirm-overlay" @click.self="showBulkDeleteConfirm = false">
-        <div class="confirm-dialog">
-          <p class="confirm-title">Delete {{ selectionStore.count }} item{{ selectionStore.count === 1 ? '' : 's' }}?</p>
-          <p class="confirm-message">This action cannot be undone.</p>
-          <div class="confirm-actions">
-            <button class="confirm-cancel-btn" @click="showBulkDeleteConfirm = false">Cancel</button>
-            <button class="confirm-delete-btn" @click="onBulkDelete">Delete</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <RecoveryDialog v-if="showRecovery" :refresh="refreshRecoveryCollection" @close="showRecovery = false" />
+    <DeleteConfirmation
+      v-if="showBulkDeleteConfirm"
+      :items="deleteTargets"
+      :remove="removeConfirmed"
+      @close="showBulkDeleteConfirm = false; deleteTargets = []"
+      @deleted="onDeleted"
+    />
 
-    <!-- Bulk module edit dialog -->
-    <Teleport to="body">
-      <div v-if="showBulkModuleDialog" class="confirm-overlay" @click.self="showBulkModuleDialog = false">
+    <ActionConfirmation v-if="mutation" :action="mutation" @close="mutation = null" @confirmed="onMutationConfirmed" @uncertain="mutationUncertain = true" />
+
+    <!-- Pick a destination before confirming a fixed-target move. -->
+    <ModalSurface v-if="showBulkModuleDialog" label="Choose destination module" @close="showBulkModuleDialog = false">
+      <div class="confirm-overlay" @click.self="showBulkModuleDialog = false">
         <div class="confirm-dialog">
-          <p class="confirm-title">Move {{ selectionStore.count }} item{{ selectionStore.count === 1 ? '' : 's' }} to:</p>
-          <select v-model="bulkTargetModuleId" class="bulk-module-select">
+          <p class="confirm-title">Move {{ bulkTargets.length }} item(s) to:</p>
+          <select v-model="bulkTargetModuleId" class="bulk-module-select" aria-label="Destination module">
             <option value="" disabled>Select module...</option>
             <option v-for="mod in moduleStore.modules" :key="mod.id" :value="mod.id">{{ mod.displayName }}</option>
           </select>
           <div class="confirm-actions">
-            <button class="confirm-cancel-btn" @click="showBulkModuleDialog = false">Cancel</button>
-            <button class="confirm-delete-btn" :disabled="!bulkTargetModuleId" @click="onBulkUpdateModule" style="background: var(--accent-blue)">Move</button>
+            <button autofocus class="confirm-cancel-btn" @click="showBulkModuleDialog = false">Cancel</button>
+            <button class="confirm-delete-btn" :disabled="!bulkTargetModuleId" @click="onBulkUpdateModule" style="background: var(--accent-blue)">Review move</button>
           </div>
         </div>
       </div>
-    </Teleport>
+    </ModalSurface>
 
     <ImportDialog
+      ref="importRef"
+      :refresh-error="importRefreshError"
+      :refreshing="importRefreshing"
+      @refresh="onImported"
       v-if="showImportDialog"
       @close="showImportDialog = false"
       @imported="onImported"
@@ -828,7 +1029,7 @@ function onSettingsClose() {
     />
     <ToastProvider />
   </div>
-  </component>
+  </div>
 </template>
 
 <style>
@@ -845,9 +1046,16 @@ body {
 .app-layout {
   display: flex;
   height: 100vh;
+  height: 100dvh;
+}
+@media (max-width: 767px) {
+  .app-layout { flex-direction: column; }
+  .app-layout > .main-content { padding: 16px; border-radius: 0; }
 }
 .main-content {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   padding: 24px;
   overflow-y: auto;
   background-color: var(--bg-primary);
@@ -859,6 +1067,7 @@ body {
   position: relative;
   z-index: 1;
 }
+.main-content.has-selection { padding-bottom: 224px; }
 .loading {
   color: var(--text-muted);
   padding: 48px;

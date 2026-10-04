@@ -19,6 +19,7 @@ describe('fetchModules', () => {
       ok: true,
       status: 200,
       json: () => Promise.resolve(modules),
+      text: () => Promise.resolve(JSON.stringify(modules)),
     } as unknown as Response)
 
     const store = useModuleStore()
@@ -34,6 +35,7 @@ describe('fetchModules', () => {
       ok: false,
       status: 500,
       json: () => Promise.resolve({error: 'server error'}),
+      text: () => Promise.resolve(JSON.stringify({error: 'server error'})),
     } as unknown as Response)
 
     const store = useModuleStore()
@@ -51,6 +53,7 @@ describe('fetchModules', () => {
     ]
     global.fetch = vi.fn().mockResolvedValue({
       ok: true, status: 200, json: () => Promise.resolve(modules),
+      text: () => Promise.resolve(JSON.stringify(modules)),
     } as unknown as Response)
 
     const store = useModuleStore()

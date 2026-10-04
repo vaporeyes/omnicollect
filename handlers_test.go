@@ -26,6 +26,11 @@ func newTestServer(t *testing.T) (string, *App) {
 		t.Fatalf("creating test store: %v", err)
 	}
 
+	for _, id := range []string{"comics", "old", "new"} {
+		if err := store.SaveModule(storage.ModuleSchema{ID: id, DisplayName: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	tmpDir := t.TempDir()
 	mediaStore := newTestMediaStore(t, tmpDir)
 
@@ -198,7 +203,10 @@ func TestHandlerDeleteItems(t *testing.T) {
 }
 
 func TestHandlerBulkUpdateModule(t *testing.T) {
-	url, _ := newTestServer(t)
+	url, app := newTestServer(t)
+	if err := app.store.SaveModule(storage.ModuleSchema{ID: "new-mod", DisplayName: "New"}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create an item
 	body := `{"moduleId":"old","title":"Item","images":[],"attributes":{}}`
@@ -252,13 +260,8 @@ func TestHandlerExportBackup(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// With SQLiteStore, backup should produce a zip (or may fail gracefully
-	// if the DB file doesn't exist on disk). We test that the handler responds.
-	// In-memory DB backup uses createCloudBackup fallback since the store
-	// is *storage.SQLiteStore, but createBackupArchive needs a disk file.
-	// Accept either 200 (zip) or 500 (no disk file for WAL checkpoint).
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusInternalServerError {
-		t.Errorf("status: got %d, want 200 or 500", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status: got %d, want 200", resp.StatusCode)
 	}
 }
 
@@ -318,9 +321,9 @@ func TestHandlerSaveSettings(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusNoContent {
 		data, _ := io.ReadAll(resp.Body)
-		t.Fatalf("status: got %d, want %d; body: %s", resp.StatusCode, http.StatusOK, string(data))
+		t.Fatalf("status: got %d, want %d; body: %s", resp.StatusCode, http.StatusNoContent, string(data))
 	}
 }
 

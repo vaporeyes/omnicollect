@@ -34,6 +34,7 @@ type AttrPair struct {
 
 // GalleryData holds all data passed to the gallery template.
 type GalleryData struct {
+	Slug           string
 	CollectionName string
 	TotalItems     int
 	Items          []GalleryItem
@@ -41,6 +42,7 @@ type GalleryData struct {
 	TotalPages     int
 	PrevPage       int
 	NextPage       int
+	Truncated      bool
 }
 
 // RenderGallery writes the gallery HTML page to w.

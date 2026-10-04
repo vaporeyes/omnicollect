@@ -1,7 +1,6 @@
 <script lang="ts" setup>
-import {ref, onMounted} from 'vue'
-import type {ModuleSchema, Showcase} from '../api/types'
-import {toggleShowcase, listShowcases, getAIStatus} from '../api/client'
+import type {ModuleSchema} from '../api/types'
+import {useShowcaseControls} from '../composables/showcaseControls'
 
 defineProps<{
   modules: ModuleSchema[]
@@ -13,52 +12,13 @@ const emit = defineEmits<{
   createSchema: []
 }>()
 
-// Showcase state per module
-const showcaseMap = ref<Record<string, Showcase>>({})
-const copiedSlug = ref<string | null>(null)
-const isCloudMode = ref(false)
+const {showcaseMap, copiedSlug, isCloudMode, sharingReady, sharingError, sharingBusy, onToggleShowcase, copyShowcaseUrl} = useShowcaseControls()
 
-onMounted(async () => {
-  // Check AI status to determine if we're in cloud mode (showcase feature requires it)
-  try {
-    const status = await getAIStatus()
-    isCloudMode.value = status.cloudMode === true
-    if (isCloudMode.value) {
-      const showcases = await listShowcases()
-      for (const sc of showcases) {
-        showcaseMap.value[sc.moduleId] = sc
-      }
-    }
-  } catch {
-    isCloudMode.value = false
-  }
-})
-
-async function onToggleShowcase(mod: ModuleSchema, event: Event) {
-  event.stopPropagation()
-  const current = showcaseMap.value[mod.id]
-  const newEnabled = !current?.enabled
-  try {
-    const result = await toggleShowcase(mod.id, newEnabled)
-    showcaseMap.value[mod.id] = result
-  } catch (e) {
-    console.error('Failed to toggle showcase:', e)
-  }
-}
-
-function copyShowcaseUrl(mod: ModuleSchema, event: Event) {
-  event.stopPropagation()
-  const sc = showcaseMap.value[mod.id]
-  if (!sc?.url) return
-  const url = window.location.origin + sc.url
-  navigator.clipboard.writeText(url)
-  copiedSlug.value = sc.slug
-  setTimeout(() => { copiedSlug.value = null }, 2000)
-}
 </script>
 
 <template>
   <div class="module-selector">
+    <p v-if="sharingError" role="alert">{{ sharingError }}</p>
     <h3>Collection Types</h3>
     <div v-if="modules.length === 0" class="empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
@@ -81,6 +41,8 @@ function copyShowcaseUrl(mod: ModuleSchema, event: Event) {
             <button
               v-if="isCloudMode"
               class="share-btn"
+              :aria-label="`${showcaseMap[mod.id]?.enabled ? 'Make private' : 'Publish'}: ${mod.displayName}`"
+              :disabled="!sharingReady || sharingBusy[mod.id]"
               :class="{active: showcaseMap[mod.id]?.enabled}"
               @click.stop="onToggleShowcase(mod, $event)"
               :title="showcaseMap[mod.id]?.enabled ? 'Make private' : 'Make public'"
@@ -94,6 +56,8 @@ function copyShowcaseUrl(mod: ModuleSchema, event: Event) {
             <button
               v-if="isCloudMode && showcaseMap[mod.id]?.enabled"
               class="copy-btn"
+              :disabled="!sharingReady || sharingBusy[mod.id]"
+              :aria-label="`Copy public link for ${mod.displayName}`"
               @click.stop="copyShowcaseUrl(mod, $event)"
               :title="copiedSlug === showcaseMap[mod.id]?.slug ? 'Copied!' : 'Copy link'"
             >

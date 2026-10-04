@@ -1,7 +1,7 @@
 <!-- ABOUTME: Lightweight right-click context menu positioned at cursor coordinates. -->
 <!-- ABOUTME: Accepts menu options with labels, actions, and optional destructive styling. -->
 <script lang="ts" setup>
-import {ref, watch, onMounted, onUnmounted} from 'vue'
+import {ref, watch, nextTick, onMounted, onBeforeUnmount} from 'vue'
 
 export interface MenuOption {
   label: string
@@ -23,33 +23,68 @@ const emit = defineEmits<{
 
 const menuEl = ref<HTMLElement | null>(null)
 
-// Adjusted position to keep menu within viewport
 const adjustedX = ref(0)
 const adjustedY = ref(0)
-
-watch(() => [props.visible, props.x, props.y], () => {
-  if (!props.visible) return
-  // Start at cursor, will adjust after render in next tick
+let opener: HTMLElement | null = null
+let generation = 0
+let closing = false
+function restoreFocus() {if (opener?.isConnected) opener.focus()}
+function dismiss(restore = true) {
+  if (!props.visible || closing) return
+  closing = true
+  if (restore) restoreFocus()
+  emit('close')
+}
+function choose(action: string) {
+  if (closing) return
+  closing = true
+  restoreFocus()
+  emit('select', action)
+  emit('close')
+}
+watch(() => [props.visible, props.x, props.y], async () => {
+  const current = ++generation
+  if (!props.visible) {
+    if (menuEl.value?.contains(document.activeElement)) restoreFocus()
+    return
+  }
+  closing = false
+  if (!menuEl.value?.contains(document.activeElement)) opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
   adjustedX.value = props.x
   adjustedY.value = props.y
-  requestAnimationFrame(() => {
-    if (!menuEl.value) return
-    const rect = menuEl.value.getBoundingClientRect()
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    if (rect.right > vw) adjustedX.value = vw - rect.width - 8
-    if (rect.bottom > vh) adjustedY.value = vh - rect.height - 8
-  })
-})
+  await nextTick()
+  if (current !== generation || !props.visible || !menuEl.value) return
+  const rect = menuEl.value.getBoundingClientRect()
+  adjustedX.value = Math.max(8, Math.min(props.x, window.innerWidth - rect.width - 8))
+  adjustedY.value = Math.max(8, Math.min(props.y, window.innerHeight - rect.height - 8))
+  menuEl.value.querySelector<HTMLButtonElement>('button')?.focus()
+}, {immediate: true})
 
-function onClickOutside(e: MouseEvent) {
-  if (menuEl.value && !menuEl.value.contains(e.target as Node)) {
-    emit('close')
-  }
+function onKeydown(event: KeyboardEvent) {
+  event.stopPropagation()
+  if (event.key === 'Escape') {event.preventDefault(); dismiss(); return}
+  if (event.key === 'Tab') {dismiss(); return}
+  const buttons = Array.from(menuEl.value?.querySelectorAll<HTMLButtonElement>('button') || [])
+  if (!buttons.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 :
+    (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+  buttons[next]?.focus()
 }
-
-onMounted(() => document.addEventListener('mousedown', onClickOutside, true))
-onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true))
+function onOutside(event: Event) {
+  if (menuEl.value && !menuEl.value.contains(event.target as Node)) dismiss(false)
+}
+onMounted(() => {
+  document.addEventListener('mousedown', onOutside, true)
+  document.addEventListener('focusin', onOutside)
+})
+onBeforeUnmount(() => {
+  generation++
+  if (menuEl.value?.contains(document.activeElement)) restoreFocus()
+  document.removeEventListener('mousedown', onOutside, true)
+  document.removeEventListener('focusin', onOutside)
+})
 </script>
 
 <template>
@@ -59,13 +94,18 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
         v-if="visible"
         ref="menuEl"
         class="context-menu"
+        role="menu"
+        aria-label="Actions"
+        @keydown="onKeydown"
         :style="{left: adjustedX + 'px', top: adjustedY + 'px'}"
       >
         <button
           v-for="opt in options"
           :key="opt.action"
           :class="['ctx-item', {destructive: opt.destructive}]"
-          @click="emit('select', opt.action); emit('close')"
+          role="menuitem"
+          tabindex="-1"
+          @click="choose(opt.action)"
         >
           {{ opt.label }}
         </button>
@@ -78,7 +118,10 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
 .context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 160px;
+  min-width: min(160px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   padding: 4px;
   background: var(--bg-primary, #1e1e2e);
   border: 1px solid var(--border-primary, #333);
@@ -99,7 +142,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside, true
   cursor: pointer;
   transition: background 0.1s;
 }
-.ctx-item:hover {
+.ctx-item:hover, .ctx-item:focus-visible {
   background: var(--bg-hover, rgba(255,255,255,0.06));
 }
 .ctx-item.destructive {

@@ -3,10 +3,10 @@
 package main
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +28,18 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+func decodeJSONBody(r *http.Request, value any) error {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("request must contain exactly one JSON value")
+	}
+	return nil
+}
+
 // Items
 
 func (s *Server) handleGetItems(w http.ResponseWriter, r *http.Request) {
@@ -35,9 +47,17 @@ func (s *Server) handleGetItems(w http.ResponseWriter, r *http.Request) {
 	moduleID := r.URL.Query().Get("moduleId")
 	filtersJSON := r.URL.Query().Get("filters")
 	tagsJSON := r.URL.Query().Get("tags")
+	if err := storage.ValidateQuery(query, moduleID, filtersJSON, tagsJSON); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	items, err := s.requestStore(r).QueryItems(query, moduleID, filtersJSON, tagsJSON)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if errors.Is(err, storage.ErrPaginationRequired) {
+			status = http.StatusUnprocessableEntity
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, fromStorageItems(items))
@@ -45,39 +65,41 @@ func (s *Server) handleGetItems(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSaveItem(w http.ResponseWriter, r *http.Request) {
 	var item Item
-	if err := json.NewDecoder(r.Body).Decode(&item); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&item); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if item.ModuleID == "" {
-		writeError(w, http.StatusBadRequest, "module_id is required")
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		writeError(w, http.StatusBadRequest, "request must contain one JSON object")
 		return
 	}
-	if item.Title == "" {
-		writeError(w, http.StatusBadRequest, "title is required")
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	// Filenames refer only to media readable in this tenant namespace.
+	if len(item.Images) > 50 {
+		writeError(w, http.StatusBadRequest, "too many images")
 		return
 	}
-	if item.Images == nil {
-		item.Images = []string{}
+	for _, name := range item.Images {
+		if err := s.requestMediaStore(r).CheckOriginal(ctx, name); err != nil {
+			writeError(w, http.StatusBadRequest, "image is not available in this collection")
+			return
+		}
 	}
-	if item.Tags == nil {
-		item.Tags = []string{}
-	}
-	if item.Attributes == nil {
-		item.Attributes = map[string]any{}
-	}
-
-	store := s.requestStore(r)
-	si := toStorageItem(item)
-	var result storage.Item
-	var err error
-	if item.ID == "" {
-		result, err = store.InsertItem(si)
-	} else {
-		result, err = store.UpdateItem(si)
-	}
+	result, err := s.requestStore(r).SaveItem(ctx, toStorageItem(item))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		if errors.Is(err, storage.ErrEditConflict) {
+			status = http.StatusConflict
+		}
+		if errors.Is(err, storage.ErrEditVersionRequired) {
+			status = http.StatusPreconditionRequired
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			status = http.StatusRequestTimeout
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, fromStorageItem(result))
@@ -89,10 +111,19 @@ func (s *Server) handleDeleteItem(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "item ID is required")
 		return
 	}
-	if err := s.requestStore(r).DeleteItem(id); err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+	batch, err := s.requestStore(r).DeleteWithRecovery([]string{id})
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, storage.ErrInvalidDeletion) {
+			status = http.StatusBadRequest
+		}
+		if errors.Is(err, storage.ErrDeleteSelectionMissing) {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, "Deletion was not confirmed; inspect the recovery list before retrying: "+err.Error())
 		return
 	}
+	w.Header().Set("X-Recovery-ID", batch.RecoveryID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -100,7 +131,7 @@ func (s *Server) handleDeleteItems(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -108,12 +139,16 @@ func (s *Server) handleDeleteItems(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no item IDs provided")
 		return
 	}
-	deleted, err := s.requestStore(r).DeleteItems(body.IDs)
+	batch, err := s.requestStore(r).DeleteWithRecovery(body.IDs)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusInternalServerError
+		if errors.Is(err, storage.ErrInvalidDeletion) || errors.Is(err, storage.ErrDeleteSelectionMissing) {
+			status = http.StatusBadRequest
+		}
+		writeError(w, status, "Deletion was not confirmed; inspect the recovery list before retrying: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, BulkDeleteResult{Deleted: deleted})
+	writeJSON(w, http.StatusOK, batch)
 }
 
 func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +156,7 @@ func (s *Server) handleBulkUpdateModule(w http.ResponseWriter, r *http.Request) 
 		IDs         []string `json:"ids"`
 		NewModuleID string   `json:"newModuleId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -157,7 +192,7 @@ func (s *Server) handleRenameTag(w http.ResponseWriter, r *http.Request) {
 		OldName string `json:"oldName"`
 		NewName string `json:"newName"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -238,9 +273,32 @@ func (s *Server) handleLoadModuleFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // Images
+var imageUploads = make(chan struct{}, 4)
+var archiveUploads = make(chan struct{}, 2)
+
+func limitUploads(w http.ResponseWriter, workers chan struct{}) (func(), bool) {
+	select {
+	case workers <- struct{}{}:
+		return func() { <-workers }, true
+	default:
+		w.Header().Set("Retry-After", "5")
+		writeError(w, http.StatusTooManyRequests, "too many uploads; retry shortly")
+		return nil, false
+	}
+}
 
 func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(32 << 20) // 32MB max
+	release, ok := limitUploads(w, imageUploads)
+	if !ok {
+		return
+	}
+	defer release()
+	r.Body = http.MaxBytesReader(w, r.Body, (30<<20)+(1<<20))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "invalid multipart upload or image exceeds 30 MB")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
 	file, _, err := r.FormFile("image")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "no image file: "+err.Error())
@@ -263,7 +321,12 @@ func (s *Server) handleUploadImage(w http.ResponseWriter, r *http.Request) {
 	}
 	tmp.Close()
 
-	result, err := s.app.ProcessImage(tmp.Name())
+	data, err := processImageFile(r.Context(), tmp.Name())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := persistProcessedImage(r.Context(), s.requestMediaStore(r), data)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -283,17 +346,9 @@ func (s *Server) handleExportBackup(w http.ResponseWriter, r *http.Request) {
 	tmp.Close()
 	defer os.Remove(tmpPath)
 
-	// Use SQLite-native backup if available, otherwise export via Store
-	if sqliteStore, ok := s.requestStore(r).(*storage.SQLiteStore); ok {
-		if err := createBackupArchive(tmpPath, sqliteStore.DB()); err != nil {
-			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
-			return
-		}
-	} else {
-		if err := createCloudBackup(tmpPath, s.requestStore(r)); err != nil {
-			writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
-			return
-		}
+	if err := createBackupArchive(r.Context(), tmpPath, s.requestStore(r), s.requestMediaStore(r)); err != nil {
+		writeError(w, http.StatusInternalServerError, "creating backup: "+err.Error())
+		return
 	}
 
 	filename := fmt.Sprintf("omnicollect-backup-%s.zip", time.Now().UTC().Format("20060102-150405"))
@@ -306,7 +361,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -335,10 +390,7 @@ func (s *Server) handleExportCSV(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	content, err := s.requestStore(r).GetSettings()
 	if err != nil {
-		// Return empty object if no settings
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{}"))
+		writeError(w, http.StatusInternalServerError, "could not load settings")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -356,13 +408,23 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // Import
 
 func (s *Server) handleAnalyzeBackup(w http.ResponseWriter, r *http.Request) {
-	r.ParseMultipartForm(256 << 20) // 256MB max
+	release, ok := limitUploads(w, archiveUploads)
+	if !ok {
+		return
+	}
+	defer release()
+	r.Body = http.MaxBytesReader(w, r.Body, (256<<20)+(1<<20))
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "invalid multipart upload or backup exceeds 256 MB")
+		return
+	}
+	defer r.MultipartForm.RemoveAll()
 	file, _, err := r.FormFile("backup")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "no backup file: "+err.Error())
@@ -385,21 +447,28 @@ func (s *Server) handleAnalyzeBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	tmp.Close()
 
-	summary, err := analyzeBackupZip(tmp.Name())
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	summary, err := analyzeBackupZip(ctx, tmp.Name())
 	if err != nil {
 		os.Remove(tmp.Name())
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// tempId is the filename (not full path) for security
-	summary.TempID = filepath.Base(tmp.Name())
+	// The client receives an opaque, tenant-owned handle, never a filename.
+	summary.TempID, err = s.imports.register(tmp.Name(), importOwner(r))
+	if err != nil {
+		os.Remove(tmp.Name())
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
 	var req ImportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONBody(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -408,72 +477,48 @@ func (s *Server) handleExecuteImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve temp file path (only allow files in the system temp dir)
-	tmpPath := filepath.Join(os.TempDir(), req.TempID)
-	defer os.Remove(tmpPath)
-
-	zr, err := zip.OpenReader(tmpPath)
+	tmpPath, err := s.imports.claim(req.TempID, importOwner(r))
 	if err != nil {
-		writeError(w, http.StatusNotFound, "backup file not found or expired")
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	succeeded := false
+	defer func() { s.imports.release(req.TempID, succeeded) }()
+
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Minute)
+	defer cancel()
+	release, err := acquireArchiveWorker(ctx)
+	if err != nil {
+		writeError(w, http.StatusRequestTimeout, err.Error())
+		return
+	}
+	defer release()
+	zr, err := openBackupZip(tmpPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "could not open backup")
 		return
 	}
 	defer zr.Close()
-
-	format, err := detectBackupFormat(&zr.Reader)
+	snapshot, _, warnings, err := loadBackup(ctx, &zr.Reader)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	var items []storage.Item
-	var modules []storage.ModuleSchema
-	if format == "local" {
-		items, modules, err = readItemsFromLocalBackup(&zr.Reader)
-	} else {
-		items, modules, err = readItemsFromCloudBackup(&zr.Reader)
-	}
+	restoredImages, err := stageBackupMedia(ctx, &zr.Reader, &snapshot, s.requestMediaStore(r))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "reading backup: "+err.Error())
+		writeError(w, http.StatusBadRequest, "collection unchanged: media staging failed: "+err.Error())
 		return
 	}
-
-	result := ImportResult{Warnings: []string{}}
-
-	// Check for missing module references
-	result.Warnings = append(result.Warnings, checkMissingModules(items, modules)...)
-
-	// Execute the import
-	importStore := s.requestStore(r)
-	if req.Mode == "replace" {
-		if err := executeReplace(importStore, items, modules); err != nil {
-			writeError(w, http.StatusInternalServerError, "replace failed (rolled back): "+err.Error())
-			return
-		}
-		result.ItemsImported = len(items)
-		result.ModulesImported = len(modules)
-	} else {
-		processed, err := executeMerge(importStore, items, modules)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "merge failed: "+err.Error())
-			return
-		}
-		result.ItemsImported = processed
-		result.ModulesImported = len(modules)
-	}
-
-	// Restore images (best-effort after DB commit)
-	restored, err := restoreImages(&zr.Reader, s.app.mediaStore)
+	result, err := s.requestStore(r).Restore(ctx, snapshot, req.Mode)
 	if err != nil {
-		result.Warnings = append(result.Warnings, "image restoration had errors: "+err.Error())
+		writeError(w, http.StatusBadRequest, "restore was not confirmed; the collection may have changed. Refresh and inspect it before retrying: "+err.Error())
+		return
 	}
-	result.ImagesRestored = restored
+	response := ImportResult{ItemsImported: result.Items, ModulesImported: result.Modules, ImagesRestored: restoredImages, Warnings: warnings}
+	// No mutable App module cache: requests read their own tenant-scoped store.
 
-	// Reload modules in memory
-	if reloaded, err := importStore.GetModules(); err == nil {
-		s.app.modules = toMainModules(reloaded)
-	}
-
-	writeJSON(w, http.StatusOK, result)
+	succeeded = true
+	writeJSON(w, http.StatusOK, response)
 }
 
 // AI
@@ -488,7 +533,7 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 		ImageFilename string `json:"imageFilename"`
 		ModuleID      string `json:"moduleId"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -498,9 +543,9 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read image bytes from MediaStore
-	imageBytes, err := s.readOriginalImage(body.ImageFilename)
+	imageBytes, err := s.requestMediaStore(r).GetOriginal(r.Context(), body.ImageFilename)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "image not found: "+err.Error())
+		writeError(w, http.StatusNotFound, "image not found")
 		return
 	}
 
@@ -526,7 +571,7 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 	prompt := ai.BuildPrompt(*schema)
 	imageBase64 := base64.StdEncoding.EncodeToString(imageBytes)
 
-	rawResponse, err := s.app.aiProvider.AnalyzeImage(r.Context(), imageBase64, prompt)
+	rawResponse, err := s.app.aiProvider.AnalyzeImage(r.Context(), imageBase64, http.DetectContentType(imageBytes), prompt)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "AI analysis failed: "+err.Error())
 		return
@@ -541,19 +586,6 @@ func (s *Server) handleAnalyzeItem(w http.ResponseWriter, r *http.Request) {
 		"warnings":   warnings,
 	}
 	writeJSON(w, http.StatusOK, result)
-}
-
-// readOriginalImage reads the original image bytes from the active MediaStore.
-func (s *Server) readOriginalImage(filename string) ([]byte, error) {
-	switch ms := s.app.mediaStore.(type) {
-	case *storage.LocalMediaStore:
-		path := filepath.Join(ms.BaseDir(), "originals", filename)
-		return os.ReadFile(path)
-	case *storage.S3MediaStore:
-		return ms.GetOriginal(context.Background(), filename)
-	default:
-		return nil, fmt.Errorf("unsupported media store type")
-	}
 }
 
 func (s *Server) handleAIStatus(w http.ResponseWriter, r *http.Request) {
@@ -576,7 +608,7 @@ func (s *Server) handleToggleShowcase(w http.ResponseWriter, r *http.Request) {
 		ModuleID string `json:"moduleId"`
 		Enabled  bool   `json:"enabled"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
@@ -669,7 +701,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Check database connectivity
 	if pgStore, ok := s.requestStore(r).(*storage.PostgresStore); ok {
-		if err := pgStore.Ping(context.Background()); err != nil {
+		if err := pgStore.Ping(r.Context()); err != nil {
 			result["status"] = "error"
 			result["database"] = "disconnected"
 		}
@@ -677,7 +709,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	// Check S3 connectivity
 	if s3Store, ok := s.app.mediaStore.(*storage.S3MediaStore); ok {
-		if err := s3Store.Ping(context.Background()); err != nil {
+		if err := s3Store.Ping(r.Context()); err != nil {
 			result["status"] = "error"
 			result["storage"] = "disconnected"
 		}
@@ -703,51 +735,4 @@ func ServeFrontend(distDir string) http.Handler {
 		// SPA fallback: serve index.html for client-side routing
 		http.ServeFile(w, r, filepath.Join(distDir, "index.html"))
 	})
-}
-
-// handleMediaProxy proxies media requests to S3 via the S3MediaStore.
-func (s *Server) handleMediaProxy(prefix string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		filename := r.URL.Path[len(prefix):]
-		if filename == "" {
-			http.NotFound(w, r)
-			return
-		}
-
-		s3Store, ok := s.app.mediaStore.(*storage.S3MediaStore)
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-
-		var data []byte
-		var err error
-		if prefix == "/originals/" {
-			data, err = s3Store.GetOriginal(context.Background(), filename)
-		} else {
-			data, err = s3Store.GetThumbnail(context.Background(), filename)
-		}
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-
-		// Detect content type from extension
-		ct := "application/octet-stream"
-		ext := filepath.Ext(filename)
-		switch ext {
-		case ".jpg", ".jpeg":
-			ct = "image/jpeg"
-		case ".png":
-			ct = "image/png"
-		case ".gif":
-			ct = "image/gif"
-		case ".webp":
-			ct = "image/webp"
-		}
-
-		w.Header().Set("Content-Type", ct)
-		w.Header().Set("Cache-Control", "public, max-age=86400")
-		w.Write(data)
-	}
 }

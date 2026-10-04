@@ -1,6 +1,23 @@
 /* OmniCollect theme -- CSS variable defaults.
    theme.ts applies light ("Archive") or dark ("Vault") tokens at runtime.
    These defaults match the light mode palette. */
+/* Keyboard focus must remain visible on icon controls and image captions. */
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+/* Keep content visible and avoid decorative movement for motion-sensitive users. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 :root {
   /* Fluid spacing scale */
   --space-xs: 4px;

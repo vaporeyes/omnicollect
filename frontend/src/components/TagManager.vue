@@ -1,24 +1,30 @@
 <!-- ABOUTME: Tag management panel listing all tags with counts, inline rename, and delete. -->
 <!-- ABOUTME: Emits rename and delete events for the parent to handle via API calls. -->
 <script lang="ts" setup>
-import {ref} from 'vue'
+import {ref, computed} from 'vue'
+import {useEditorGuard} from '../composables/editorGuard'
 import type {TagCount} from '../api/types'
 
 const props = defineProps<{
   tags: TagCount[]
+  disabled?: boolean
+  loadError?: string
 }>()
 
 const emit = defineEmits<{
   rename: [payload: {oldName: string, newName: string}]
   delete: [name: string]
   close: []
+  reload: []
 }>()
 
 const editingTag = ref<string | null>(null)
 const editValue = ref('')
-const confirmDelete = ref<string | null>(null)
+const guard = useEditorGuard(computed(() => editingTag.value !== null && editValue.value !== editingTag.value), ref(false))
+defineExpose({canLeave: guard.canLeave, cancelEdit})
 
 function startEdit(name: string) {
+  if (editingTag.value !== name && !guard.canLeave()) return
   editingTag.value = name
   editValue.value = name
 }
@@ -29,14 +35,13 @@ function cancelEdit() {
 }
 
 function submitEdit() {
+  if (props.disabled || props.loadError) return
   const newName = editValue.value.trim().toLowerCase()
   if (!newName || newName === editingTag.value) {
     cancelEdit()
     return
   }
   emit('rename', {oldName: editingTag.value!, newName})
-  editingTag.value = null
-  editValue.value = ''
 }
 
 function onEditKeydown(e: KeyboardEvent) {
@@ -49,18 +54,7 @@ function onEditKeydown(e: KeyboardEvent) {
 }
 
 function requestDelete(name: string) {
-  confirmDelete.value = name
-}
-
-function cancelDelete() {
-  confirmDelete.value = null
-}
-
-function executeDelete() {
-  if (confirmDelete.value) {
-    emit('delete', confirmDelete.value)
-    confirmDelete.value = null
-  }
+  if (!props.disabled && !props.loadError) emit('delete', name)
 }
 </script>
 
@@ -68,10 +62,11 @@ function executeDelete() {
   <div class="tag-manager">
     <div class="tag-manager-header">
       <h3>Manage Tags</h3>
-      <button class="close-btn" @click="emit('close')">&times;</button>
+      <button class="close-btn" aria-label="Close tag manager" @click="emit('close')">&times;</button>
     </div>
 
-    <div v-if="tags.length === 0" class="empty-state">
+    <p v-if="loadError" role="alert">{{ loadError }} <button @click="emit('reload')">Retry loading tags</button></p>
+    <div v-else-if="tags.length === 0" class="empty-state">
       No tags yet. Add tags to items using the edit form.
     </div>
 
@@ -82,35 +77,24 @@ function executeDelete() {
             v-model="editValue"
             class="tag-edit-input"
             maxlength="50"
-            @keydown="onEditKeydown"
+            aria-label="New tag name"
+            @keydown.stop="onEditKeydown"
             ref="editInput"
             autofocus
           />
-          <button class="tag-action-btn save-btn" @click="submitEdit">Save</button>
+          <button class="tag-action-btn save-btn" :disabled="disabled || !!loadError" @click="submitEdit">Save</button>
           <button class="tag-action-btn cancel-btn" @click="cancelEdit">Cancel</button>
         </template>
         <template v-else>
-          <span class="tag-name" @click="startEdit(tag.name)">{{ tag.name }}</span>
+          <button class="tag-name" @click="startEdit(tag.name)">{{ tag.name }}</button>
           <span class="tag-item-count">{{ tag.count }} item{{ tag.count === 1 ? '' : 's' }}</span>
           <button class="tag-action-btn rename-btn" @click="startEdit(tag.name)">Rename</button>
-          <button class="tag-action-btn delete-btn" @click="requestDelete(tag.name)">Delete</button>
+          <button class="tag-action-btn delete-btn" :disabled="disabled || !!loadError" @click="requestDelete(tag.name)">Delete</button>
         </template>
       </div>
     </div>
 
-    <!-- Delete confirmation -->
-    <Teleport to="body">
-      <div v-if="confirmDelete" class="confirm-overlay" @click.self="cancelDelete">
-        <div class="confirm-dialog">
-          <p class="confirm-title">Delete tag "{{ confirmDelete }}"?</p>
-          <p class="confirm-message">This will remove the tag from all items. Items will not be deleted.</p>
-          <div class="confirm-actions">
-            <button class="confirm-cancel-btn" @click="cancelDelete">Cancel</button>
-            <button class="confirm-delete-btn" @click="executeDelete">Delete</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+
   </div>
 </template>
 
@@ -166,6 +150,9 @@ function executeDelete() {
   background: var(--bg-hover, rgba(255,255,255,0.04));
 }
 .tag-name {
+  background: transparent;
+  border: 0;
+  text-align: left;
   flex: 1;
   font-family: var(--font-body);
   font-size: 14px;
@@ -228,65 +215,4 @@ function executeDelete() {
   color: var(--text-muted);
 }
 
-/* Confirmation dialog */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 4000;
-}
-.confirm-dialog {
-  background: var(--bg-primary, #1e1e2e);
-  border: 1px solid var(--border-primary, #333);
-  border-radius: var(--radius-md);
-  padding: 28px;
-  max-width: 360px;
-  width: 90%;
-  box-shadow: var(--shadow-lg);
-}
-.confirm-title {
-  margin: 0 0 4px;
-  font-family: var(--font-heading);
-  font-size: 18px;
-  font-weight: 400;
-  color: var(--text-primary);
-}
-.confirm-message {
-  margin: 0 0 20px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.confirm-cancel-btn {
-  padding: 8px 18px;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-primary);
-  cursor: pointer;
-  font-size: 13px;
-}
-.confirm-cancel-btn:hover {
-  background: var(--bg-hover);
-}
-.confirm-delete-btn {
-  padding: 8px 18px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--error-border, #dc2626);
-  color: #fff;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-.confirm-delete-btn:hover {
-  background: #b91c1c;
-}
 </style>

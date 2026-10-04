@@ -3,6 +3,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -65,6 +66,20 @@ func LoadConfig() Config {
 		AIModel:      os.Getenv("AI_MODEL"),
 		AIBaseURL:    os.Getenv("AI_BASE_URL"),
 	}
+}
+
+// Validate rejects configurations that cannot provide tenant isolation.
+func (c Config) Validate() error {
+	if c.IsAuthEnabled() && !c.IsCloudDB() {
+		return fmt.Errorf("JWT authentication requires PostgreSQL tenant isolation; SQLite is single-user only")
+	}
+	if c.IsAuthEnabled() && c.AuthAudience == "" {
+		return fmt.Errorf("AUTH_AUDIENCE is required when authentication is enabled")
+	}
+	if c.Port < 1 || c.Port > 65535 {
+		return fmt.Errorf("PORT must be between 1 and 65535")
+	}
+	return nil
 }
 
 // IsCloudDB returns true if a PostgreSQL DATABASE_URL is configured.

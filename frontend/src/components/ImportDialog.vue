@@ -1,18 +1,31 @@
 <!-- ABOUTME: Multi-step import dialog for restoring backup ZIP files. -->
 <!-- ABOUTME: States: file picker, analyzing, summary with mode selection, importing, result. -->
 <script lang="ts" setup>
-import {ref} from 'vue'
-import {analyzeBackup, executeImport} from '../api/client'
+import {ref, computed, onMounted, onBeforeUnmount} from 'vue'
+import ModalSurface from './ModalSurface.vue'
+import {analyzeBackup, executeImport, APIError} from '../api/client'
 import type {ImportSummary, ImportResult} from '../api/types'
+
+defineProps<{refreshError?: string; refreshing?: boolean}>()
 
 const emit = defineEmits<{
   close: []
   imported: [result: ImportResult]
+  refresh: []
 }>()
 
 type Step = 'pick' | 'analyzing' | 'summary' | 'importing' | 'result'
 
 const step = ref<Step>('pick')
+const busy = computed(() => step.value === 'analyzing' || step.value === 'importing')
+const replaceConfirmed = ref(false)
+let alive = true
+function guardUnload(event: BeforeUnloadEvent) {
+  if (busy.value) {event.preventDefault(); event.returnValue = ''}
+}
+onMounted(() => window.addEventListener('beforeunload', guardUnload))
+onBeforeUnmount(() => {alive = false; window.removeEventListener('beforeunload', guardUnload)})
+defineExpose({requestClose: onClose, busy})
 const summary = ref<ImportSummary | null>(null)
 const result = ref<ImportResult | null>(null)
 const mode = ref<'replace' | 'merge'>('merge')
@@ -30,7 +43,7 @@ function onFileSelect(event: Event) {
 function onDrop(event: DragEvent) {
   dragOver.value = false
   const file = event.dataTransfer?.files?.[0]
-  if (file && file.name.endsWith('.zip')) {
+  if (file && file.name.toLowerCase().endsWith('.zip')) {
     startAnalyze(file)
   } else {
     error.value = 'Please drop a .zip backup file'
@@ -38,39 +51,52 @@ function onDrop(event: DragEvent) {
 }
 
 async function startAnalyze(file: File) {
+  if (busy.value) return
+  if (!file.name.toLowerCase().endsWith('.zip') || file.size > 256 * 1024 * 1024 || file.size === 0) {
+    error.value = 'Choose a non-empty ZIP backup no larger than 256 MB'
+    return
+  }
+  replaceConfirmed.value = false
   step.value = 'analyzing'
   error.value = ''
   try {
-    summary.value = await analyzeBackup(file)
+    const analyzed = await analyzeBackup(file)
+    if (!alive) return
+    summary.value = analyzed
     step.value = 'summary'
   } catch (e: any) {
+    if (!alive) return
     error.value = e?.message ?? 'Failed to analyze backup'
     step.value = 'pick'
   }
 }
 
 async function onConfirm() {
-  if (!summary.value) return
+  if (step.value !== 'summary' || !summary.value || (mode.value === 'replace' && !replaceConfirmed.value)) return
   step.value = 'importing'
   error.value = ''
   try {
-    result.value = await executeImport(summary.value.tempId, mode.value)
+    const imported = await executeImport(summary.value.tempId, mode.value)
+    if (!alive) return
+    result.value = imported
     step.value = 'result'
     emit('imported', result.value)
   } catch (e: any) {
+    if (!alive) return
     error.value = e?.message ?? 'Import failed'
+    if (!(e instanceof APIError)) error.value += ' The connection was lost; the import may have completed. Refresh your collection before retrying.'
     step.value = 'summary'
   }
 }
 
 function onClose() {
-  emit('close')
+  if (!busy.value) emit('close')
 }
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="import-overlay" @click.self="onClose">
+    <ModalSurface label="Import backup" :busy="busy" class="import-overlay" @close="onClose" @click.self="onClose">
       <div class="import-dialog">
         <h2 class="import-title">Import Backup</h2>
 
@@ -82,6 +108,10 @@ function onClose() {
             @dragover.prevent="dragOver = true"
             @dragleave="dragOver = false"
             @drop.prevent="onDrop"
+            role="button"
+            tabindex="0"
+            @keydown.enter.prevent="fileInput?.click()"
+            @keydown.space.prevent="fileInput?.click()"
             @click="fileInput?.click()"
           >
             <p class="drop-label">Drop a backup ZIP here or click to browse</p>
@@ -112,7 +142,7 @@ function onClose() {
         <div v-if="step === 'summary'" class="import-step">
           <div class="summary-grid">
             <div class="summary-item">
-              <span class="summary-value">{{ summary?.format === 'local' ? 'Local (SQLite)' : 'Cloud (JSON)' }}</span>
+              <span class="summary-value">{{ summary?.format === 'local' ? 'Local (SQLite)' : 'Portable (JSON)' }}</span>
               <span class="summary-label">Format</span>
             </div>
             <div class="summary-item">
@@ -133,23 +163,25 @@ function onClose() {
             <p v-for="w in summary.warnings" :key="w" class="import-warning">{{ w }}</p>
           </div>
 
+          <label v-if="mode === 'replace'"><input type="checkbox" v-model="replaceConfirmed" /> I understand this replaces the current collection and settings.</label>
+          <button type="button" class="import-cancel-btn" @click="step = 'pick'; error = ''">Choose another backup</button>
           <div class="mode-selection">
             <label class="mode-option" :class="{selected: mode === 'merge'}">
               <input type="radio" v-model="mode" value="merge" />
               <span class="mode-name">Merge</span>
-              <span class="mode-desc">Add backup items alongside existing data. Existing items are preserved.</span>
+              <span class="mode-desc">Keep items absent from the backup; matching IDs are updated from the backup.</span>
             </label>
             <label class="mode-option" :class="{selected: mode === 'replace'}">
               <input type="radio" v-model="mode" value="replace" />
               <span class="mode-name">Replace</span>
-              <span class="mode-desc">Remove all existing data and restore from backup only.</span>
+              <span class="mode-desc">Replace items, schemas, and settings, and permanently clear deletion recovery. Public showcases will be disabled.</span>
             </label>
           </div>
 
           <p v-if="error" class="import-error">{{ error }}</p>
           <div class="import-actions">
             <button class="import-cancel-btn" @click="onClose">Cancel</button>
-            <button class="import-confirm-btn" @click="onConfirm">Import</button>
+            <button class="import-confirm-btn" :disabled="mode === 'replace' && !replaceConfirmed" @click="onConfirm">Import</button>
           </div>
         </div>
 
@@ -163,6 +195,8 @@ function onClose() {
 
         <!-- Step 5: Result -->
         <div v-if="step === 'result'" class="import-step">
+          <p v-if="refreshError" role="alert" class="import-error">{{ refreshError }}</p>
+          <button v-if="refreshError" :disabled="refreshing" class="import-cancel-btn" @click="emit('refresh')">Retry view refresh</button>
           <div class="summary-grid">
             <div class="summary-item">
               <span class="summary-value">{{ result?.itemsImported }}</span>
@@ -187,7 +221,7 @@ function onClose() {
           </div>
         </div>
       </div>
-    </div>
+    </ModalSurface>
   </Teleport>
 </template>
 
@@ -202,6 +236,9 @@ function onClose() {
   z-index: 4000;
 }
 .import-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  overflow-wrap: anywhere;
   background: var(--bg-primary, #1e1e2e);
   border: 1px solid var(--border-primary, #333);
   border-radius: var(--radius-md);

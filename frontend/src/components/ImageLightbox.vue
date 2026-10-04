@@ -1,7 +1,9 @@
 <script lang="ts" setup>
-import {ref} from 'vue'
+import MediaImage from './MediaImage.vue'
+import {ref, watch} from 'vue'
+import ModalSurface from './ModalSurface.vue'
 
-defineProps<{
+const props = defineProps<{
   filename: string
   visible: boolean
 }>()
@@ -36,29 +38,60 @@ function onWheel(event: WheelEvent) {
   zoomLevel.value = Math.min(8, Math.max(1.5, zoomLevel.value + delta))
 }
 
-function onClose() {
+function reset() {
   zoomed.value = false
   zoomLevel.value = 2.5
-  emit('close')
+  originX.value = originY.value = '50%'
 }
+watch(() => [props.visible, props.filename], reset)
+function changeZoom(delta: number) {
+  zoomed.value = true
+  zoomLevel.value = Math.min(8, Math.max(1.5, zoomLevel.value + delta))
+}
+function onKeydown(event: KeyboardEvent) {
+  event.stopPropagation()
+  if (event.key === '+' || event.key === '=') {event.preventDefault(); changeZoom(.3)}
+  else if (event.key === '-') {event.preventDefault(); changeZoom(-.3)}
+  else if (zoomed.value && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    event.preventDefault()
+    const clamp = (value: number) => Math.max(0, Math.min(100, value)) + '%'
+    if (event.key === 'ArrowLeft') originX.value = clamp(parseFloat(originX.value) - 10)
+    if (event.key === 'ArrowRight') originX.value = clamp(parseFloat(originX.value) + 10)
+    if (event.key === 'ArrowUp') originY.value = clamp(parseFloat(originY.value) - 10)
+    if (event.key === 'ArrowDown') originY.value = clamp(parseFloat(originY.value) + 10)
+  }
+}
+function onClose() {reset(); emit('close')}
+
 </script>
 
 <template>
-  <Transition name="scale-in">
-    <div v-if="visible" class="lightbox-overlay" @click="onClose">
+  <ModalSurface v-if="visible" label="Image viewer" @close="onClose" @keydown="onKeydown">
+    <div class="lightbox-overlay" @click.self="onClose">
       <div class="lightbox-content" @click.stop>
-        <button class="lightbox-close" @click="onClose">x</button>
-        <div class="lightbox-hint" v-if="!zoomed">Click image to inspect</div>
-        <div class="lightbox-hint" v-else>Scroll to adjust zoom. Click to exit.</div>
+        <button autofocus class="lightbox-close" aria-label="Close image viewer" @click="onClose">×</button>
+        <div class="zoom-controls">
+          <button @click="changeZoom(-.3)" aria-label="Zoom out">−</button>
+          <button @click="changeZoom(.3)" aria-label="Zoom in">+</button>
+          <button @click="reset">Reset zoom</button>
+          <span role="status">{{ zoomed ? zoomLevel.toFixed(1) : '1.0' }}×</span>
+        </div>
+        <div class="lightbox-hint" v-if="!zoomed">Click or press Enter on the image to inspect</div>
+        <div class="lightbox-hint" v-else>Scroll or use +/− to zoom. Arrow keys pan. Click image to reset.</div>
         <div
           class="loupe-container"
           :class="{zoomed}"
+          role="button"
+          tabindex="0"
+          aria-label="Toggle image zoom"
+          :aria-pressed="zoomed"
+          @keydown.enter.prevent="toggleZoom"
+          @keydown.space.prevent="toggleZoom"
           @click="toggleZoom"
           @mousemove="onMouseMove"
-          @mouseleave="zoomed = false"
           @wheel="onWheel"
         >
-          <img
+          <MediaImage
             :src="'/originals/' + encodeURIComponent(filename)"
             alt="Full resolution"
             :style="zoomed ? {
@@ -69,10 +102,13 @@ function onClose() {
         </div>
       </div>
     </div>
-  </Transition>
+  </ModalSurface>
 </template>
 
 <style scoped>
+.loupe-container:focus-visible {outline: 2px solid white; outline-offset: 2px;}
+.zoom-controls {display: flex; align-items: center; gap: 10px; margin-bottom: 8px; color: white;}
+.zoom-controls button {padding: 6px 12px; background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: var(--radius-sm);}
 .lightbox-overlay {
   position: fixed;
   top: 0;
@@ -141,29 +177,4 @@ function onClose() {
   z-index: 1;
 }
 
-/* scale-in: overlay fades in while content scales up from center */
-.scale-in-enter-active {
-  transition: opacity 0.2s ease-out;
-}
-.scale-in-enter-active .lightbox-content {
-  transition: transform 0.2s ease-out;
-}
-.scale-in-leave-active {
-  transition: opacity 0.15s ease-in;
-}
-.scale-in-leave-active .lightbox-content {
-  transition: transform 0.15s ease-in;
-}
-.scale-in-enter-from {
-  opacity: 0;
-}
-.scale-in-enter-from .lightbox-content {
-  transform: scale(0.93);
-}
-.scale-in-leave-to {
-  opacity: 0;
-}
-.scale-in-leave-to .lightbox-content {
-  transform: scale(0.93);
-}
 </style>

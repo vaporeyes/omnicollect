@@ -91,6 +91,25 @@ describe('isSelected', () => {
   })
 })
 
+describe('changing result sets', () => {
+  it('tracks the range anchor by identity after sorting', () => {
+    const store = useSelectionStore()
+    store.toggle('a', 0)
+    store.shiftSelect(1, [makeItem('c'), makeItem('b'), makeItem('a')])
+    expect(store.selectedIdArray().sort()).toEqual(['a', 'b'])
+  })
+  it('prunes removed items and rejects invalid range targets', () => {
+    const store = useSelectionStore()
+    store.selectAll([makeItem('a'), makeItem('b')])
+    store.prune([makeItem('b')])
+    store.shiftSelect(-1, [])
+    store.shiftSelect(50, [makeItem('b')])
+    expect(store.selectedIdArray()).toEqual(['b'])
+    store.toggle('', 0)
+    expect(store.count).toBe(1)
+  })
+})
+
 describe('selectedIdArray', () => {
   it('returns array of selected IDs', () => {
     const store = useSelectionStore()

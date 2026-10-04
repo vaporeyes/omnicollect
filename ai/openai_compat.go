@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
@@ -58,7 +57,10 @@ type openaiResponse struct {
 }
 
 // AnalyzeImage sends an image and prompt to an OpenAI-compatible endpoint.
-func (p *OpenAICompatProvider) AnalyzeImage(ctx context.Context, imageBase64 string, prompt string) (string, error) {
+func (p *OpenAICompatProvider) AnalyzeImage(ctx context.Context, imageBase64 string, mediaType string, prompt string) (string, error) {
+	if err := validateMediaType(mediaType); err != nil {
+		return "", err
+	}
 	reqBody := openaiRequest{
 		Model:     p.model,
 		MaxTokens: 4096,
@@ -69,7 +71,7 @@ func (p *OpenAICompatProvider) AnalyzeImage(ctx context.Context, imageBase64 str
 					openaiImageURLBlock{
 						Type: "image_url",
 						ImageURL: openaiImageURL{
-							URL: "data:image/jpeg;base64," + imageBase64,
+							URL: "data:" + mediaType + ";base64," + imageBase64,
 						},
 					},
 					openaiTextBlock{
@@ -94,19 +96,19 @@ func (p *OpenAICompatProvider) AnalyzeImage(ctx context.Context, imageBase64 str
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := providerHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("calling AI API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := readProviderResponse(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("AI API returned %d: %s", resp.StatusCode, string(respBytes))
+		return "", fmt.Errorf("AI API returned HTTP %d", resp.StatusCode)
 	}
 
 	var result openaiResponse
@@ -115,7 +117,7 @@ func (p *OpenAICompatProvider) AnalyzeImage(ctx context.Context, imageBase64 str
 	}
 
 	if result.Error != nil {
-		return "", fmt.Errorf("AI API error: %s", result.Error.Message)
+		return "", fmt.Errorf("AI API rejected the request")
 	}
 
 	if len(result.Choices) == 0 {

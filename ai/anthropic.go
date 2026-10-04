@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 )
 
@@ -58,7 +57,10 @@ type anthropicResponse struct {
 }
 
 // AnalyzeImage sends an image and prompt to the Anthropic Messages API.
-func (p *AnthropicProvider) AnalyzeImage(ctx context.Context, imageBase64 string, prompt string) (string, error) {
+func (p *AnthropicProvider) AnalyzeImage(ctx context.Context, imageBase64 string, mediaType string, prompt string) (string, error) {
+	if err := validateMediaType(mediaType); err != nil {
+		return "", err
+	}
 	reqBody := anthropicRequest{
 		Model:     p.model,
 		MaxTokens: 4096,
@@ -70,7 +72,7 @@ func (p *AnthropicProvider) AnalyzeImage(ctx context.Context, imageBase64 string
 						Type: "image",
 						Source: anthropicImageSource{
 							Type:      "base64",
-							MediaType: "image/jpeg",
+							MediaType: mediaType,
 							Data:      imageBase64,
 						},
 					},
@@ -96,19 +98,19 @@ func (p *AnthropicProvider) AnalyzeImage(ctx context.Context, imageBase64 string
 	req.Header.Set("x-api-key", p.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := providerHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("calling Anthropic API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := readProviderResponse(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Anthropic API returned %d: %s", resp.StatusCode, string(respBytes))
+		return "", fmt.Errorf("Anthropic API returned HTTP %d", resp.StatusCode)
 	}
 
 	var result anthropicResponse
@@ -117,7 +119,7 @@ func (p *AnthropicProvider) AnalyzeImage(ctx context.Context, imageBase64 string
 	}
 
 	if result.Error != nil {
-		return "", fmt.Errorf("Anthropic API error: %s", result.Error.Message)
+		return "", fmt.Errorf("Anthropic API rejected the request")
 	}
 
 	if len(result.Content) == 0 {

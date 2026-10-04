@@ -1,6 +1,7 @@
 // ABOUTME: Centralized fetch-based HTTP client for the OmniCollect REST API.
 // ABOUTME: Supports optional Auth0 Bearer token injection via setTokenGetter.
 
+import {captureSession} from '../auth/session'
 import type {TagCount, AIAnalysisResult, AIStatus, Showcase} from './types'
 
 const BASE_URL = (import.meta as any).env?.VITE_API_URL || ''
@@ -11,18 +12,19 @@ type TokenGetter = () => Promise<string>
 let getToken: TokenGetter | null = null
 
 // setTokenGetter is called by the auth plugin to wire up token retrieval.
-export function setTokenGetter(fn: TokenGetter) {
+export function setTokenGetter(fn: TokenGetter | null) {
   getToken = fn
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
   if (!getToken) return {}
-  try {
-    const token = await getToken()
-    return {Authorization: `Bearer ${token}`}
-  } catch {
-    return {}
-  }
+  const token = await getToken()
+  if (typeof token !== 'string' || !token.trim()) throw new Error('Authentication did not provide an access token')
+  return {Authorization: `Bearer ${token}`}
+}
+
+export class APIError extends Error {
+  constructor(message: string, public readonly status: number) {super(message); this.name = 'APIError'}
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -32,56 +34,68 @@ async function handleResponse<T>(res: Response): Promise<T> {
       const body = await res.json()
       if (body.error) msg = body.error
     } catch { /* use status text */ }
-    throw new Error(msg)
+    throw new APIError(msg, res.status)
   }
-  return res.json()
+  if (res.status === 204 || res.status === 205) return undefined as T
+  const text = await res.text()
+  return text.trim() ? JSON.parse(text) as T : undefined as T
 }
 
-export async function get<T>(path: string): Promise<T> {
-  const headers = await authHeaders()
-  const res = await fetch(BASE_URL + path, {headers})
-  return handleResponse<T>(res)
-}
-
-export async function post<T>(path: string, body: any): Promise<T> {
-  const auth = await authHeaders()
-  const res = await fetch(BASE_URL + path, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json', ...auth},
-    body: JSON.stringify(body),
+function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const abort = () => {signal.removeEventListener('abort', abort); reject(new DOMException('Request cancelled', 'AbortError'))}
+    signal.addEventListener('abort', abort, {once: true})
+    promise.then(value => {signal.removeEventListener('abort', abort); resolve(value)}, error => {signal.removeEventListener('abort', abort); reject(error)})
+    if (signal.aborted) abort()
   })
-  return handleResponse<T>(res)
 }
 
-export async function put<T>(path: string, body: any): Promise<T> {
-  const auth = await authHeaders()
-  const res = await fetch(BASE_URL + path, {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json', ...auth},
-    body: JSON.stringify(body),
-  })
-  return handleResponse<T>(res)
-}
-
-export async function del(path: string): Promise<void> {
-  const auth = await authHeaders()
-  const res = await fetch(BASE_URL + path, {method: 'DELETE', headers: auth})
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`
-    try {
-      const body = await res.json()
-      if (body.error) msg = body.error
-    } catch { /* use status text */ }
-    throw new Error(msg)
+async function perform<T>(path: string, options: RequestInit, consume: (res: Response, check: () => void) => Promise<T> = handleResponse): Promise<T> {
+  const session = captureSession()
+  session.assertCurrent()
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  const check = () => {session.assertCurrent(); if (controller.signal.aborted) throw new DOMException('Request cancelled', 'AbortError')}
+  const caller = options.signal
+  session.signal.addEventListener('abort', abort, {once: true})
+  caller?.addEventListener('abort', abort, {once: true})
+  if (caller?.aborted) abort()
+  try {
+    const auth = await withAbort(authHeaders(), controller.signal)
+    check()
+    const res = await withAbort(fetch(BASE_URL + path, {...options, signal: controller.signal, headers: {...options.headers, ...auth}}), controller.signal)
+    check()
+    const result = await withAbort(consume(res, check), controller.signal)
+    check()
+    return result
+  } finally {
+    session.signal.removeEventListener('abort', abort)
+    caller?.removeEventListener('abort', abort)
   }
 }
-
-export async function postFile<T>(path: string, file: File, fieldName = 'image'): Promise<T> {
-  const auth = await authHeaders()
-  const form = new FormData()
-  form.append(fieldName, file)
-  const res = await fetch(BASE_URL + path, {method: 'POST', headers: auth, body: form})
-  return handleResponse<T>(res)
+export function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return perform<T>(path, {signal})
+}
+export async function getMedia(path: string, signal?: AbortSignal): Promise<Blob> {
+  if (!/^\/(originals|thumbnails)\/[A-Za-z0-9][A-Za-z0-9_.%-]*$/.test(path)) throw new Error('Invalid media path')
+  return perform(path, {signal}, async res => {
+    if (!res.ok) {await handleResponse(res); throw new Error('Image unavailable')}
+    const blob = await res.blob()
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(blob.type)) throw new Error('Invalid image response')
+    return blob
+  })
+}
+export function post<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
+  return perform<T>(path, {method: 'POST', signal, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+}
+export function put<T>(path: string, body: any): Promise<T> {
+  return perform<T>(path, {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+}
+export function del(path: string): Promise<void> {return perform<void>(path, {method: 'DELETE'})}
+export function postFile<T>(path: string, file: File, fieldName = 'image', signal?: AbortSignal): Promise<T> {
+  const body = new FormData()
+  body.append(fieldName, file)
+  return perform<T>(path, {method: 'POST', body, signal})
 }
 
 export async function getAllTags(): Promise<TagCount[]> {
@@ -104,8 +118,8 @@ export async function executeImport(tempId: string, mode: string): Promise<impor
   return post<import('./types').ImportResult>('/api/v1/import/execute', {tempId, mode})
 }
 
-export async function analyzeItem(imageFilename: string, moduleId: string): Promise<AIAnalysisResult> {
-  return post<AIAnalysisResult>('/api/v1/ai/analyze', {imageFilename, moduleId})
+export async function analyzeItem(imageFilename: string, moduleId: string, signal?: AbortSignal): Promise<AIAnalysisResult> {
+  return post<AIAnalysisResult>('/api/v1/ai/analyze', {imageFilename, moduleId}, signal)
 }
 
 export async function getAIStatus(): Promise<AIStatus> {
@@ -121,24 +135,22 @@ export async function listShowcases(): Promise<Showcase[]> {
 }
 
 export async function downloadFile(path: string, body?: any): Promise<void> {
-  const auth = await authHeaders()
   const opts: RequestInit = body
-    ? {method: 'POST', headers: {'Content-Type': 'application/json', ...auth}, body: JSON.stringify(body)}
-    : {method: 'GET', headers: auth}
-  const res = await fetch(BASE_URL + path, opts)
-  if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
-
-  const blob = await res.blob()
-  const disposition = res.headers.get('Content-Disposition') || ''
-  const match = disposition.match(/filename="?([^"]+)"?/)
-  const filename = match?.[1] || 'download'
-
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+    ? {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}
+    : {method: 'GET'}
+  return perform(path, opts, async (res, check) => {
+    if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`)
+    const blob = await res.blob()
+    check()
+    const disposition = res.headers.get('Content-Disposition') || ''
+    const match = disposition.match(/filename="?([^"]+)"?/)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    try {
+      a.href = url
+      a.download = match?.[1] || 'download'
+      document.body.appendChild(a)
+      a.click()
+    } finally {a.remove(); URL.revokeObjectURL(url)}
+  })
 }
